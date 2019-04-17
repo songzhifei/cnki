@@ -12,6 +12,7 @@
         <module>SparkAnalysis</module>
         <module>spark-redis</module>
         <module>spark-mllib</module>
+        <module>spark-NLP</module>
     </modules>
 
     <dependencies>
