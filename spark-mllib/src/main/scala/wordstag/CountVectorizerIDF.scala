@@ -39,8 +39,8 @@ object CountVectorizerIDF {
     val cvModel: CountVectorizerModel = new CountVectorizer()
       .setInputCol("content")
       .setOutputCol("feature")
-      .setVocabSize(10000) //向量长度
-      .setMinDF(2) //词汇出现次数必须大于等于2
+      .setVocabSize(5) //向量长度
+      //.setMinDF(2) //词汇出现次数必须大于等于2
       .fit(pplDf)
     val cvDf = cvModel.transform(pplDf)
 
@@ -51,7 +51,7 @@ object CountVectorizerIDF {
 
     val voc= cvModel.vocabulary
 
-    voc.foreach{println}
+    //voc.foreach{println}
     val getKeyWordsFun = udf((fea:Vector)=>{
       var arrW = ArrayBuffer[String]()
       var arrV = ArrayBuffer[Double]()
@@ -62,11 +62,11 @@ object CountVectorizerIDF {
       (arrW zip arrV).toList.sortBy(-_._2).take(25).toMap.map(_._1).toArray
     })
 
-    val keyWordsDf = idfDf.withColumn("keywords",getKeyWordsFun(col("features"))).drop("features")
+    val keyWordsDf = idfDf.withColumn("keywords",getKeyWordsFun(col("features")))
 
     keyWordsDf.show(false)
 
-    splitWordRdd.flatMap(_._2).collect().foreach{println}
+    //splitWordRdd.flatMap(_._2).collect().foreach{println}
 
     spark.stop()
 

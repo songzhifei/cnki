@@ -13,6 +13,7 @@
         <module>spark-redis</module>
         <module>spark-mllib</module>
         <module>spark-NLP</module>
+        <module>spark-recommand</module>
     </modules>
 
     <dependencies>
