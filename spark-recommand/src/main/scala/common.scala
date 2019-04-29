@@ -3,6 +3,7 @@ import java.text.SimpleDateFormat
 import java.util.{ArrayList, Date}
 
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.rdd.RDD
 import org.codehaus.jackson.JsonParseException
 import org.codehaus.jackson.`type`.TypeReference
 import org.codehaus.jackson.map.{JsonMappingException, ObjectMapper}
@@ -17,13 +18,13 @@ object common {
 
   case class NewsLog_Temp(username:String,view_time:String,title:String,content:String,module_id:String,map:CustomizedHashMap[String, Double])
 
-  case class users(id:Long,name:String, prefList:String,latest_log_time:String)
+  case class users(UserID:BigInt,UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,ProductviscosityInterests:String,PurchaseIntentionInterests:String,latest_log_time:String)
 
   case class UserPortrait(UserID:BigInt,UserName:String,LawOfworkAndRest:Int,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String)
 
-  case class NewsTemp(id:Long, content:String, news_time:String, title:String, module_id:Int, url:String, keywords:CustomizedHashMap[String, Double])
+  case class NewsTemp(id:Long, content:String, news_time:String, title:String, module_id:String, keywords:CustomizedHashMap[String, Double])
 
-  case class recommendations(user_id:BigInt,news_id:BigInt,score:Double)
+  case class recommendations(user_id:BigInt,username:String,news_id:BigInt,news_title:String,score:Double)
 
   def formatUserViewLogs(line:String): NewsLog_Temp ={
     val tokens = line.split("::")
@@ -83,9 +84,9 @@ object common {
 
   }
 
-  def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]],logTime:Broadcast[String]): users ={
+  def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]],logTime:Broadcast[String]): UserTemp ={
     val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.username).getOrElse(new Array[NewsLog_Temp](0))
-    println("处理前的rateMap：" + user.prefListExtend.toString)
+    //println("处理前的rateMap：" + user.prefListExtend.toString)
     if (newsList.length >0) {
       //1.3. 根据用户画像和浏览历史更新各个用户的用户兴趣标签
       for(news <- newsList){
@@ -109,20 +110,19 @@ object common {
         //println("处理后的rateMap：" + user.prefListExtend.get(news.module_id))
       }
     }
-    println("处理后的rateMap：" + user.prefListExtend.toString)
+    //println("处理后的rateMap：" + user.prefListExtend.toString)
 
-    users(user.id,user.username,user.prefListExtend.toString,logTime.value)
+    UserTemp(user.id,user.username,user.prefList,user.prefListExtend,logTime.value)
+    //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
   }
 
   def jsonPrefListtoMap (srcJson: String): CustomizedHashMap[String, CustomizedHashMap[String, Double]] = {
 
     if(objectMapper == null) {
       objectMapper = new ObjectMapper
-      println(1)
     }
     var result = new CustomizedHashMap[String, CustomizedHashMap[String, Double]]()
     try{
-      println(srcJson)
       var map:CustomizedHashMap[String, CustomizedHashMap[String, Double]] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedHashMap[String, Double]]]() {})
       var iterator = map.keySet.iterator()
       while(iterator.hasNext){
@@ -164,8 +164,8 @@ object common {
     arr.filter(tuple=>tuple._2>0)
   }
 
-  def compare(t1:(Long,Long,Double),t2:(Long,Long,Double)): Boolean ={
-    t1._3 > t2._3
+  def compare(t1:(Long,String,Long,String,Double),t2:(Long,String,Long,String,Double)): Boolean ={
+    t1._5.compareTo(t2._5) > 0
   }
 
   def formatUsers(line:String):UserTemp={
@@ -177,9 +177,9 @@ object common {
 
     val tokens = line.split("::")
 
-    var title = tokens(3)
+    var title = tokens(2)
     var content = ""
-    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(tokens(6)).get(tokens(4).toInt)
+    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(tokens(7)).get(tokens(5))
 
     //println(jsonPrefListtoMap(tokens(6)),map,tokens(4).toInt,title,tokens(6))
 
@@ -197,24 +197,26 @@ object common {
         map.put(name,score)
       }
     }
-    NewsTemp(tokens(0).toLong, "", tokens(2), title, tokens(4).toInt, tokens(5), map)
+    NewsTemp(tokens(0).toLong, "", tokens(6), title, tokens(5),map)
   }
 
-  def formatRecommandTuple(user:UserTemp,newsBroadCast:Broadcast[Array[NewsTemp]]): ArrayBuffer[(Long, Long, Double)] ={
-    var tempMatchArr = new ArrayBuffer[(Long, Long, Double)]()
+  def formatRecommandTuple(user:UserTemp,newsBroadCast:Broadcast[Array[NewsTemp]]): ArrayBuffer[(Long,String, Long,String, Double)] ={
+    var tempMatchArr = new ArrayBuffer[(Long,String, Long,String, Double)]()
     var ite = newsBroadCast.value.iterator
     while (ite.hasNext) {
       val news = ite.next
       val newsId = news.id
       val moduleId = news.module_id
 
-      if (null != user.prefListExtend.get(moduleId)) {
-        val tuple: (Long, Long, Double) = (user.id, newsId, getMatchValue(user.prefListExtend.get(moduleId), news.keywords))
+      var map = user.prefListExtend.get(moduleId)
+
+      if (null != map) {
+        val tuple: (Long,String, Long,String, Double) = (user.id,user.username, newsId,news.title, getMatchValue(map, news.keywords))
         tempMatchArr += tuple
       }
     }
     // 去除匹配值为0的项目,并排序
-    var sortedTuples: ArrayBuffer[(Long, Long, Double)] = tempMatchArr.filter(tuple => tuple._3 > 0).sortWith(compare)
+    var sortedTuples: ArrayBuffer[(Long,String, Long,String, Double)] = tempMatchArr.filter(tuple => tuple._5 > 0).sortWith(compare)
 
     if (sortedTuples.length > 0) {
       //暂时不操作
@@ -232,5 +234,13 @@ object common {
   def getNowStr():String={
     var now =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
     now
+  }
+
+  def recommand(userList:RDD[UserTemp],newsBroadCast:Broadcast[Array[NewsTemp]]): RDD[recommendations] ={
+
+    val recommandRDD: RDD[recommendations] = userList.map(user => formatRecommandTuple(user, newsBroadCast)).flatMap(_.toList).map(tuple => {
+      recommendations(tuple._1, tuple._2, tuple._3, tuple._4, tuple._5)
+    })
+    recommandRDD
   }
 }

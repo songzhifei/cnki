@@ -4,6 +4,8 @@ import common._
 object readCSV {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.master("local[*]").appName("readCSV").getOrCreate
+
+    /*
     import spark.implicits._
     val dataFrame = spark
       .read
@@ -21,7 +23,9 @@ object readCSV {
 
       UserTemp(id.toLong, name, pre, map, row.getAs[String]("latest_log_time"))
     })
-    userList.collect()
+    userList.collect()*/
+    //2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
+    val newsList = spark.read.textFile("E:/test/journals-recommand-source/journalbaseinfo_temp.csv").rdd.map(formatNews).collect()
     spark.stop()
   }
 }

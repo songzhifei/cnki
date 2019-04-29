@@ -1,6 +1,5 @@
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import common._
-import org.apache.spark.rdd.RDD
 
 /*
 * 1.更新用户画像\
@@ -20,41 +19,37 @@ object ContentBasedRecommender {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.master("local[*]").appName("recommand-system").getOrCreate
 
-    //val value: RDD[UserTemp] = spark.read.textFile(args(0)).rdd.map(formatUsers)
+    //val userList: RDD[UserTemp] = spark.read.textFile(args(0)).rdd.map(formatUsers)
     //2.1 获取用户画像数据（格式化用户兴趣标签数据）
-    //val userList = value
-    import spark.implicits._
     val dataFrame = spark
       .read
       .option("sep", ";")
       //.option("header", true)
-      .csv("E:\\test\\recommend-system\\journal\\UserPortraitOutput\\")
+      .csv(args(0))
       .toDF("id","name","prefList","latest_log_time")
 
     val userList = dataFrame.rdd.map(row => {
       var pre = row.getAs[String]("prefList")
       var id = row.getAs[String]("id")
-
       var map = jsonPrefListtoMap(pre)
       var name = row.getAs[String]("name")
-
       UserTemp(id.toLong, name, pre, map, row.getAs[String]("latest_log_time"))
     })
 
-
+/*
     //2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
     val newsList = spark.read.textFile(args(1)).rdd.map(formatNews).collect()
 
     val newsBroadCast = spark.sparkContext.broadcast(newsList)
     import spark.implicits._
     val newdataFrame = userList.map(user => formatRecommandTuple(user,newsBroadCast)).flatMap(_.toList).map(tuple => {
-      recommendations(tuple._1, tuple._2,tuple._3)
+      recommendations(tuple._1, tuple._2,tuple._3,tuple._4,tuple._5)
     }).toDF()
 
     //dataFrame.show()
 
     newdataFrame.write.format("csv").mode(SaveMode.Overwrite).save(args(2))
-
+    */
     spark.stop()
 
   }

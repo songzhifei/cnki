@@ -8,7 +8,7 @@ object test {
     val topN = 10
     val tfidfAnalyzer = new TFIDFAnalyzer
 
-    var path = "E:\\test\\journals-recommand-source\\journalbaseinfo_temp.csv"
+    var path = "E:\\test\\recommend-system\\journal\\journalbaseinfo_new.csv"
 
     import spark.implicits._
     val dataFrame = spark.read.textFile(path).rdd.map(line => {
@@ -16,28 +16,35 @@ object test {
       val tokens = line.split("::")
 
       var title = tokens(2)
-      var content = ""
+
+      var content = tokens(3)
       //ansj分词获取tf-idf值（只支持中文）
       //val keywords: util.Iterator[Keyword] = TFIDF.getTFIDE(title, content, 10).iterator()
 
       //jieba分词获取tf-idf值
-      val keywords = TFIDFNEW.getTFIDE(title.replace("\"",""), 10).iterator()
+      //val keywords = TFIDFNEW.getTFIDE(title.replace("\"",""), 10).iterator()
 
-      var temp = new CustomizedHashMap[String,CustomizedHashMap[String,Double]]()
+      val keywordsNew = TFIDFNEW.getTFIDE(content.replace("\"",""), 10).iterator()
 
-      var map = new CustomizedHashMap[String,Double]()
+      //var temp = new CustomizedHashMap[String,CustomizedHashMap[String,Double]]()
 
-      temp.put(tokens(5),map)
+      var tempNew = new CustomizedHashMap[String,CustomizedHashMap[String,Double]]()
 
-      while (keywords.hasNext) {
-        var keyword = keywords.next()
+      //var map = new CustomizedHashMap[String,Double]()
+
+      var mapNew = new CustomizedHashMap[String,Double]()
+
+      tempNew.put(tokens(6),mapNew)
+
+      //temp.put(tokens(6),map)
+
+      while (keywordsNew.hasNext) {
+        var keyword = keywordsNew.next()
         val name = keyword.getName
         val score = keyword.getTfidfvalue
-        map.put(name,score)
+        mapNew.put(name,score)
       }
-
-      journalbaseinfo_temp(tokens(0).toInt, tokens(1), tokens(2), tokens(3), tokens(4), tokens(5),tokens(6),temp.toString)
-      //news_temp(tokens(0).toInt,"",tokens(2),tokens(3),tokens(4).toInt,tokens(5),temp.toString)
+      journalbaseinfo_temp(tokens(0).toInt, tokens(1), tokens(2), tokens(3), tokens(4), tokens(5),tokens(6),tokens(7),tempNew.toString)
     }).toDF()
 
 
@@ -61,7 +68,7 @@ object test {
 
 
   }
-  case class journalbaseinfo_temp(id:BigInt, PYKM:String, C_Name:String, CBD:String, ZJ_Code:String, ZT_Code:String, CreateOn:String,Keywords:String)
+  case class journalbaseinfo_temp(id:BigInt, PYKM:String, C_Name:String,CYKM:String, CBD:String, ZJ_Code:String, ZT_Code:String, CreateOn:String,Keywords:String)
 
   case class news_temp(id:BigInt, content:String, news_time:String, title:String, module_id:Int, url:String, keywords:String)
 }

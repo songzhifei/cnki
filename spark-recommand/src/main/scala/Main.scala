@@ -1,9 +1,5 @@
-import java.text.SimpleDateFormat
-import java.util.Date
-
 import common._
 import org.apache.spark.sql.{SaveMode, SparkSession}
-
 import scala.collection.mutable.ArrayBuffer
 
 /*
@@ -37,23 +33,24 @@ object Main {
       while (iterator.hasNext) {
         arr += iterator.next()
       }
-
       (row._1, arr.toArray)
     })
 
-    val newsBroadCast = spark.sparkContext.broadcast(newsLogList.collectAsMap())
+    val newsLogBroadCast = spark.sparkContext.broadcast(newsLogList.collectAsMap())
 
     val logTime = spark.sparkContext.broadcast(getNowStr())
 
+    val userRDD = userExtend.map(user => getUserPortrait(user,newsLogBroadCast,logTime))
+
     import spark.implicits._
-    val dataFrame = userExtend.map(user => getUserPortrait(user,newsBroadCast,logTime)).toDF()
+    val userDataFrame = userRDD.map(user=>{
+      users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
+    }).toDF()
 
-    //dataFrame.show()
-
-
-    /*
-
-    dataFrame.write
+    //更新用户画像
+    /**/
+    println("----------------------用户画像正在保存......--------------------------")
+    userDataFrame.write
       .format("jdbc")
       .option("url", "jdbc:mysql://master02:3306")
       .option("dbtable", "centerDB.users_temp")
@@ -61,8 +58,8 @@ object Main {
       .option("password", "root")
       .mode(SaveMode.Overwrite)
       .save()
-    */
-    dataFrame.repartition(1)
+
+    userDataFrame.repartition(1)
       .write
       .format("csv")
       //.option("escape","")
@@ -71,6 +68,21 @@ object Main {
       .mode(SaveMode.Overwrite)
       .save(args(2))
     println("----------------------用户画像更新成功--------------------------")
+    //生成推荐结果
+
+    println("----------------------用户推荐结果正在更新......--------------------------")
+    //2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
+    val newsList = spark.read.textFile(args(3)).rdd.map(formatNews).collect()
+
+    val newsBroadCast = spark.sparkContext.broadcast(newsList)
+
+    val recommandRDD = recommand(userRDD,newsBroadCast)
+
+    val recommandDataFrame = recommandRDD.toDF()
+
+    recommandDataFrame.write.format("csv").mode(SaveMode.Overwrite).save(args(4))
+
+    println("----------------------用户推荐结果更新成功--------------------------")
 
     spark.stop()
 

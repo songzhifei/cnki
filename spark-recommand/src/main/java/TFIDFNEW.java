@@ -26,6 +26,7 @@ public class TFIDFNEW
 	public static List<Keyword> getTFIDE(String content, int keyNums)
 	{
 		TFIDFAnalyzer tfidfAnalyzer=new TFIDFAnalyzer();
+
 		return tfidfAnalyzer.analyze(content,keyNums);
 	}
 }
