@@ -15,16 +15,16 @@ object test {
 
       val tokens = line.split("::")
 
-      var title = tokens(2)
+      var title = tokens(2).replace("&","")
 
-      var content = tokens(3)
+      var content = tokens(3).replace("&","")
       //ansj分词获取tf-idf值（只支持中文）
       //val keywords: util.Iterator[Keyword] = TFIDF.getTFIDE(title, content, 10).iterator()
 
       //jieba分词获取tf-idf值
       //val keywords = TFIDFNEW.getTFIDE(title.replace("\"",""), 10).iterator()
 
-      val keywordsNew = TFIDFNEW.getTFIDE(content.replace("\"",""), 10).iterator()
+      val keywordsNew = TFIDFNEW.getTFIDE(content.replace("\"","").replace(" ","").replace(";",""), 10).iterator()
 
       //var temp = new CustomizedHashMap[String,CustomizedHashMap[String,Double]]()
 
@@ -44,12 +44,14 @@ object test {
         val score = keyword.getTfidfvalue
         mapNew.put(name,score)
       }
-      journalbaseinfo_temp(tokens(0).toInt, tokens(1), tokens(2), tokens(3), tokens(4), tokens(5),tokens(6),tokens(7),tempNew.toString)
+      var t = tempNew.toString
+      println(t)
+      journalbaseinfo_temp(tokens(0).toInt, tokens(1), title, content, tokens(4), tokens(5),tokens(6),tokens(7),t)
     }).toDF()
 
 
     dataFrame.show()
-    /**/
+    /*
 
     dataFrame.write
       .format("jdbc")
@@ -60,7 +62,16 @@ object test {
       .mode(SaveMode.Overwrite)
       .save()
 
+    */
 
+    dataFrame.repartition(1)
+      .write
+      .format("csv")
+      //.option("escape","")
+      .option("sep","&")
+      //.option("header",true)
+      .mode(SaveMode.Overwrite)
+      .save("E:/test/recommend-system/journal/journalbaseinfo_temp")
     println("--------------------数据保存成功......！------------------------")
 
 

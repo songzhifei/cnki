@@ -2,6 +2,7 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 import common._
 
 /*
+*  根据内容相关度进行推荐
 * 1.更新用户画像\
 *   1.1. 获取用户画像数据（格式化用户兴趣标签数据）
 *   1.2. 获取用户浏览数据

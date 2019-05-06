@@ -1,20 +1,48 @@
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.{ArrayList, Date}
-
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.codehaus.jackson.JsonParseException
 import org.codehaus.jackson.`type`.TypeReference
 import org.codehaus.jackson.map.{JsonMappingException, ObjectMapper}
-
+import org.json4s.DefaultFormats
+import org.json4s.jackson.JsonMethods.parse
 import scala.collection.mutable.ArrayBuffer
 
+/*
+* 公用方法类
+* */
 object common {
+
 
   var objectMapper:ObjectMapper = null
 
-  case class UserTemp(id:Long,username:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
+  var SEP = "&"
+
+  /*
+  *
+  描述        代码      缩写
+  来访时间戳	visittime	vt
+  用户名	username	un
+  匿名用户的cookie id	guestidcookie	gki
+  行为类型	action	ac
+  资源对象	resourceobject	ro
+  资源所属kbase库	kbaselibcode	klc
+  资源ID	resourceid	ri
+  价格	price	p
+  IP	clientip	ci
+  UserAgent	useragent	ua
+  资源标准分类	resoureclasscode	rcc
+  资源自定义分类	resourecustomclasscode	rccc
+  平台代码	platformcode	pfc
+  设备类型	devicetype	dt
+  移动设备ID	deviceid	di
+  *
+  * */
+  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
+
+  case class UserTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
 
   case class NewsLog_Temp(username:String,view_time:String,title:String,content:String,module_id:String,map:CustomizedHashMap[String, Double])
 
@@ -24,17 +52,9 @@ object common {
 
   case class NewsTemp(id:Long, content:String, news_time:String, title:String, module_id:String, keywords:CustomizedHashMap[String, Double])
 
+  case class JournalBaseTemp(id:Long,PYKM:String, content:String, news_time:String, title:String, module_id:String, keywords:String)
+
   case class recommendations(user_id:BigInt,username:String,news_id:BigInt,news_title:String,score:Double)
-
-  def formatUserViewLogs(line:String): NewsLog_Temp ={
-    val tokens = line.split("::")
-
-    //val date1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(tokens(1))
-
-    val map = jsonPrefListtoMap(tokens(4))
-
-    NewsLog_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),map.get(tokens(3)))
-  }
 
   def autoDecRefresh(user:UserTemp): UserTemp ={
 
@@ -47,7 +67,7 @@ object common {
 
     var times = 1L
 
-    if(!user.latest_log_time.isEmpty)
+    if(!user.latest_log_time.isEmpty && user.latest_log_time != "\"\"")
       times = intervalTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(user.latest_log_time),new Date())
 
     for(i<- 0 to times.toInt - 1) baseAttenuationCoefficient *= baseAttenuationCoefficient
@@ -80,12 +100,12 @@ object common {
       newMap.put(moduleId,moduleMap)
     }
 
-    UserTemp(user.id,user.username,user.prefList,newMap,user.latest_log_time)
+    UserTemp(user.UserID,user.UserName,user.prefList,newMap,user.latest_log_time)
 
   }
 
   def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]],logTime:Broadcast[String]): UserTemp ={
-    val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.username).getOrElse(new Array[NewsLog_Temp](0))
+    val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[NewsLog_Temp](0))
     //println("处理前的rateMap：" + user.prefListExtend.toString)
     if (newsList.length >0) {
       //1.3. 根据用户画像和浏览历史更新各个用户的用户兴趣标签
@@ -112,7 +132,7 @@ object common {
     }
     //println("处理后的rateMap：" + user.prefListExtend.toString)
 
-    UserTemp(user.id,user.username,user.prefList,user.prefListExtend,logTime.value)
+    UserTemp(user.UserID,user.UserName,user.prefList,user.prefListExtend,logTime.value)
     //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
   }
 
@@ -123,6 +143,7 @@ object common {
     }
     var result = new CustomizedHashMap[String, CustomizedHashMap[String, Double]]()
     try{
+      //println(srcJson)
       var map:CustomizedHashMap[String, CustomizedHashMap[String, Double]] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedHashMap[String, Double]]]() {})
       var iterator = map.keySet.iterator()
       while(iterator.hasNext){
@@ -141,6 +162,12 @@ object common {
         e.printStackTrace()
     }
     return result
+  }
+
+  def jsonLoglisttoLogMap(srcJSON:String):CustomizedHashMap[String, String]={
+    if(objectMapper == null) objectMapper = new ObjectMapper
+    var map: CustomizedHashMap[String, String] = objectMapper.readValue(srcJSON,new TypeReference[CustomizedHashMap[String, String]] {})
+    map
   }
 
   def intervalTime(startDate:Date,endDate:Date): Long ={
@@ -164,24 +191,39 @@ object common {
     arr.filter(tuple=>tuple._2>0)
   }
 
-  def compare(t1:(Long,String,Long,String,Double),t2:(Long,String,Long,String,Double)): Boolean ={
+  def compare(t1:(BigInt,String,Long,String,Double),t2:(BigInt,String,Long,String,Double)): Boolean ={
     t1._5.compareTo(t2._5) > 0
   }
 
-  def formatUsers(line:String):UserTemp={
-    val tokens = line.split("::")
-    UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
+  def formatUsers(line:String):users={
+    val tokens = line.split(SEP)
+    //UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
+    var UserID = tokens(0).toInt
+    var UserName = tokens(1)
+    var LawOfworkAndRest = tokens(2)
+    var Area = tokens(3)
+    var Age = if(tokens(4).isEmpty) 0 else tokens(4).toInt
+    var Gender = if(tokens(5).isEmpty) 0 else tokens(4).toInt
+    var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty) "{}" else tokens(6).substring(1,tokens(8).length-1).replace("\\","")
+    var BooksInterests = if(tokens(7) == "\"\"" || tokens(7).isEmpty) "{}" else tokens(7).substring(1,tokens(8).length-1).replace("\\","")
+    var JournalsInterests = if(tokens(8) == "\"\"" || tokens(8).isEmpty) "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+    var ReferenceBookInterests = if(tokens(9) == "\"\"" || tokens(9).isEmpty) "{}" else tokens(9).substring(1,tokens(8).length-1).replace("\\","")
+    var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty) "{}" else tokens(10).substring(1,tokens(8).length-1).replace("\\","")
+    var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty) "{}" else tokens(11).substring(1,tokens(8).length-1).replace("\\","")
+    var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty) "{}" else tokens(12).substring(1,tokens(8).length-1).replace("\\","")
+    var latest_log_time = if(tokens(13).isEmpty) "{}" else tokens(13)
+    users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,latest_log_time)
   }
 
   def formatNews(line:String): NewsTemp ={
 
-    val tokens = line.split("::")
+    val tokens = line.split(SEP)
 
     var title = tokens(2)
     var content = ""
-    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(tokens(7)).get(tokens(5))
 
-    //println(jsonPrefListtoMap(tokens(6)),map,tokens(4).toInt,title,tokens(6))
+    var jsonStr = tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(jsonStr).get(tokens(6))
 
     /**/
     if(map == null){
@@ -200,8 +242,35 @@ object common {
     NewsTemp(tokens(0).toLong, "", tokens(6), title, tokens(5),map)
   }
 
-  def formatRecommandTuple(user:UserTemp,newsBroadCast:Broadcast[Array[NewsTemp]]): ArrayBuffer[(Long,String, Long,String, Double)] ={
-    var tempMatchArr = new ArrayBuffer[(Long,String, Long,String, Double)]()
+  def formatJournalBaseInfo(line:String): JournalBaseTemp ={
+
+    val tokens = line.split(SEP)
+
+    var title = tokens(2)
+    var content = ""
+
+    var jsonStr = tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(jsonStr).get(tokens(6))
+
+    /**/
+    if(map == null){
+
+      val keywords = TFIDFNEW.getTFIDE(title, 10).iterator()
+
+      map = new CustomizedHashMap[String,Double]()
+
+      while (keywords.hasNext) {
+        var keyword = keywords.next()
+        val name = keyword.getName
+        val score = keyword.getTfidfvalue
+        map.put(name,score)
+      }
+    }
+    JournalBaseTemp(tokens(0).toLong,tokens(1), "", tokens(7), title, tokens(6),jsonStr)
+  }
+
+  def formatRecommandTuple(user:UserTemp,newsBroadCast:Broadcast[Array[NewsTemp]]): ArrayBuffer[(BigInt,String, Long,String, Double)] ={
+    var tempMatchArr = new ArrayBuffer[(BigInt,String, Long,String, Double)]()
     var ite = newsBroadCast.value.iterator
     while (ite.hasNext) {
       val news = ite.next
@@ -211,12 +280,12 @@ object common {
       var map = user.prefListExtend.get(moduleId)
 
       if (null != map) {
-        val tuple: (Long,String, Long,String, Double) = (user.id,user.username, newsId,news.title, getMatchValue(map, news.keywords))
+        val tuple: (BigInt,String, Long,String, Double) = (user.UserID,user.UserName, newsId,news.title, getMatchValue(map, news.keywords))
         tempMatchArr += tuple
       }
     }
     // 去除匹配值为0的项目,并排序
-    var sortedTuples: ArrayBuffer[(Long,String, Long,String, Double)] = tempMatchArr.filter(tuple => tuple._5 > 0).sortWith(compare)
+    var sortedTuples: ArrayBuffer[(BigInt,String, Long,String, Double)] = tempMatchArr.filter(tuple => tuple._5 > 0).sortWith(compare)
 
     if (sortedTuples.length > 0) {
       //暂时不操作
@@ -229,6 +298,24 @@ object common {
     if (sortedTuples.length > 10)
       sortedTuples = sortedTuples.take(10)
     sortedTuples
+  }
+
+  def formatUserViewLogs(line:String): NewsLog_Temp ={
+    val tokens = line.split("::")
+
+    //val date1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(tokens(1))
+
+    val map = jsonPrefListtoMap(tokens(4))
+
+    NewsLog_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),map.get(tokens(3)))
+  }
+
+  def formatUserLog(line:String):UserLogObj={
+    val strings = line.split("] ")
+    //导入隐式值
+    implicit val formats = DefaultFormats
+    val obj: UserLogObj  = parse(strings(1),true,false).extract[UserLogObj]
+    obj
   }
 
   def getNowStr():String={

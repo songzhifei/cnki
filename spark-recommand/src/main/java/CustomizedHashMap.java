@@ -31,9 +31,9 @@ public class CustomizedHashMap<K, V> extends HashMap<K,V>
 			toString=toString.substring(0, toString.length()-1)+"}";
 		}
 		return toString;
-		
+
 	}
-	
+
 	public CustomizedHashMap<K,V> copyFromLinkedHashMap(LinkedHashMap<K,V> linkedHashMap){
 //		Iterator<K> ite = linkedHashMap.keySet().iterator();
 //		while(ite.hasNext()){

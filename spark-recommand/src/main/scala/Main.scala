@@ -22,9 +22,43 @@ object Main {
 
     //1.1. 获取用户画像数据（格式化用户兴趣标签数据）
     val userList = spark.read.textFile(args(0)).rdd.map(formatUsers)
+    import spark.implicits._
+    val userDataFrame = userList.toDF()
+    //2.2 获取所有待推荐的商品列表（格式化所有新闻对应的关键词及关键词的权重）
+    val newsList = spark.read.textFile(args(3)).rdd.map(formatNews).collect()
+
+    val newsBroadCast = spark.sparkContext.broadcast(newsList)
+
+    var SingleArticleInterestList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.SingleArticleInterest,jsonPrefListtoMap(user.SingleArticleInterest),user.latest_log_time)
+    })
+    var BooksInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.BooksInterests,jsonPrefListtoMap(user.BooksInterests),user.latest_log_time)
+    })
+    var JournalsInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.JournalsInterests,jsonPrefListtoMap(user.JournalsInterests),user.latest_log_time)
+    })
+    var ReferenceBookInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.ReferenceBookInterests,jsonPrefListtoMap(user.ReferenceBookInterests),user.latest_log_time)
+    })
+    var CustomerPurchasingPowerInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.CustomerPurchasingPowerInterests,jsonPrefListtoMap(user.CustomerPurchasingPowerInterests),user.latest_log_time)
+    })
+    var ProductviscosityInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.ProductviscosityInterests,jsonPrefListtoMap(user.ProductviscosityInterests),user.latest_log_time)
+    })
+    var PurchaseIntentionInterestsList = userList.map(user=>{
+      UserTemp(user.UserID.toLong,user.UserName,user.PurchaseIntentionInterests,jsonPrefListtoMap(user.PurchaseIntentionInterests),user.latest_log_time)
+    })
 
     //用户兴趣标签值衰减
-    val userExtend = userList.map(autoDecRefresh)
+    val SingleArticleInterestExtend = SingleArticleInterestList.map(autoDecRefresh)
+    val BooksInterestsExtend = BooksInterestsList.map(autoDecRefresh)
+    val JournalsInterestsExtend = JournalsInterestsList.map(autoDecRefresh)
+    val ReferenceBookInterestsExtend = ReferenceBookInterestsList.map(autoDecRefresh)
+    val CustomerPurchasingPowerInterestsExtend = CustomerPurchasingPowerInterestsList.map(autoDecRefresh)
+    val ProductviscosityInterestsExtend = ProductviscosityInterestsList.map(autoDecRefresh)
+    val PurchaseIntentionInterestsExtend = PurchaseIntentionInterestsList.map(autoDecRefresh)
 
     //1.2. 获取用户浏览数据
     val newsLogList = spark.read.textFile(args(1)).rdd.map(formatUserViewLogs).groupBy(_.username).map(row => {
@@ -40,16 +74,36 @@ object Main {
 
     val logTime = spark.sparkContext.broadcast(getNowStr())
 
-    val userRDD = userExtend.map(user => getUserPortrait(user,newsLogBroadCast,logTime))
+    val userRDD = JournalsInterestsExtend.map(user => getUserPortrait(user,newsLogBroadCast,logTime))
 
-    import spark.implicits._
-    val userDataFrame = userRDD.map(user=>{
-      users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
+    val JournalsInterestsFrame = userRDD.map(user=>{
+      users(user.UserID,user.UserName,"","",0,0,"","",user.prefListExtend.toString,"","","","",user.latest_log_time)
     }).toDF()
 
+    val resultDataFrame = userDataFrame
+      .join(JournalsInterestsFrame, Seq("UserID", "UserName"))
+      .select(
+        userDataFrame("UserID")
+        , userDataFrame("UserName")
+        , userDataFrame("LawOfworkAndRest")
+        , userDataFrame("Area")
+        , userDataFrame("Age")
+        , userDataFrame("Gender")
+        , userDataFrame("SingleArticleInterest")
+        , userDataFrame("BooksInterests")
+        , JournalsInterestsFrame("JournalsInterests")
+        , userDataFrame("ReferenceBookInterests")
+        , userDataFrame("CustomerPurchasingPowerInterests")
+        , userDataFrame("ProductviscosityInterests")
+        , userDataFrame("PurchaseIntentionInterests")
+        , JournalsInterestsFrame("latest_log_time")
+      )
+
+    resultDataFrame.show()
     //更新用户画像
-    /**/
+
     println("----------------------用户画像正在保存......--------------------------")
+    /*
     userDataFrame.write
       .format("jdbc")
       .option("url", "jdbc:mysql://master02:3306")
@@ -58,12 +112,14 @@ object Main {
       .option("password", "root")
       .mode(SaveMode.Overwrite)
       .save()
+    * */
 
-    userDataFrame.repartition(1)
+
+    resultDataFrame.repartition(1)
       .write
       .format("csv")
       //.option("escape","")
-      .option("sep",";")
+      .option("sep",SEP)
       //.option("header",true)
       .mode(SaveMode.Overwrite)
       .save(args(2))
@@ -71,10 +127,6 @@ object Main {
     //生成推荐结果
 
     println("----------------------用户推荐结果正在更新......--------------------------")
-    //2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
-    val newsList = spark.read.textFile(args(3)).rdd.map(formatNews).collect()
-
-    val newsBroadCast = spark.sparkContext.broadcast(newsList)
 
     val recommandRDD = recommand(userRDD,newsBroadCast)
 
