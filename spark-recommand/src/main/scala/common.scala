@@ -10,9 +10,11 @@ import org.json4s.DefaultFormats
 import org.json4s.jackson.JsonMethods.parse
 import scala.collection.mutable.ArrayBuffer
 
-/*
-* 公用方法类
-* */
+/**
+  *
+  * 公用方法类
+  *
+  * */
 object common {
 
 
@@ -43,6 +45,8 @@ object common {
   case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
 
   case class UserTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
+
+  case class UserArticleTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, Double],latest_log_time:String)
 
   case class NewsLog_Temp(username:String,view_time:String,title:String,content:String,module_id:String,map:CustomizedHashMap[String, Double])
 
@@ -136,6 +140,20 @@ object common {
     //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
   }
 
+  def getUserArticlePortrait(user:UserArticleTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]]):users={
+    val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[NewsLog_Temp](0))
+
+    newsList.groupBy(_.module_id).map(row=>{
+      if(user.prefListExtend.containsKey(row._1)){
+        user.prefListExtend.get(row._1) += row._2.length
+      }else{
+        user.prefListExtend.put(row._1,row._2.length)
+      }
+    })
+
+    users(user.UserID,user.UserName,"","",0,0,user.prefListExtend.toString,"","","","","","","")
+  }
+
   def jsonPrefListtoMap (srcJson: String): CustomizedHashMap[String, CustomizedHashMap[String, Double]] = {
 
     if(objectMapper == null) {
@@ -151,6 +169,29 @@ object common {
         if(map.get(moduleId).toString != "{}")
           result.put(moduleId,map.get(moduleId))
       }
+    }
+    catch {
+      case e: JsonParseException =>
+        e.printStackTrace()
+      case e: JsonMappingException =>
+        // TODO Auto-generated catch block
+        e.printStackTrace()
+      case e: IOException =>
+        e.printStackTrace()
+    }
+    return result
+  }
+
+  def jsonArticlePrefListtoMap(srcJson: String):CustomizedHashMap[String, Double] = {
+    if(objectMapper == null) {
+      objectMapper = new ObjectMapper
+    }
+    var result = new CustomizedHashMap[String, Double]()
+
+    try{
+      //println(srcJson)
+      var map:CustomizedHashMap[String, Double] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, Double]]() {})
+      result = map
     }
     catch {
       case e: JsonParseException =>
@@ -195,13 +236,13 @@ object common {
     t1._5.compareTo(t2._5) > 0
   }
 
-  def formatUsers(line:String):users={
+  def formatUsers(line:String,logTime:Broadcast[String]):users={
     val tokens = line.split(SEP)
     //UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
     var UserID = tokens(0).toInt
     var UserName = tokens(1)
-    var LawOfworkAndRest = tokens(2)
-    var Area = tokens(3)
+    var LawOfworkAndRest = if(tokens(2) == "\"\"") "" else  tokens(2)
+    var Area = if(tokens(3) == "\"\"") "" else  tokens(3)
     var Age = if(tokens(4).isEmpty) 0 else tokens(4).toInt
     var Gender = if(tokens(5).isEmpty) 0 else tokens(4).toInt
     var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty) "{}" else tokens(6).substring(1,tokens(8).length-1).replace("\\","")
@@ -211,8 +252,8 @@ object common {
     var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty) "{}" else tokens(10).substring(1,tokens(8).length-1).replace("\\","")
     var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty) "{}" else tokens(11).substring(1,tokens(8).length-1).replace("\\","")
     var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty) "{}" else tokens(12).substring(1,tokens(8).length-1).replace("\\","")
-    var latest_log_time = if(tokens(13).isEmpty) "{}" else tokens(13)
-    users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,latest_log_time)
+    //var latest_log_time = if(tokens(13).isEmpty || tokens(13) == "\"\"") "" else tokens(13)
+    users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,logTime.value)
   }
 
   def formatNews(line:String): NewsTemp ={
@@ -311,10 +352,15 @@ object common {
   }
 
   def formatUserLog(line:String):UserLogObj={
-    val strings = line.split("] ")
-    //导入隐式值
-    implicit val formats = DefaultFormats
-    val obj: UserLogObj  = parse(strings(1),true,false).extract[UserLogObj]
+    val strings = line.split("\\d] ")
+    var obj: UserLogObj = null
+    if(strings.size == 2){
+      //导入隐式值
+      implicit val formats = DefaultFormats
+      obj  = parse(strings(1),true,false).extract[UserLogObj]
+    }else{
+      println(line)
+    }
     obj
   }
 
