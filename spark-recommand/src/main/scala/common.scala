@@ -144,10 +144,17 @@ object common {
     val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[NewsLog_Temp](0))
 
     newsList.groupBy(_.module_id).map(row=>{
-      if(user.prefListExtend.containsKey(row._1)){
-        user.prefListExtend.get(row._1) += row._2.length
-      }else{
-        user.prefListExtend.put(row._1,row._2.length)
+
+      val keys = row._1.split(";")
+
+      for(key<- keys){
+        var value = 0D
+        if(user.prefListExtend.containsKey(key)){
+          value = user.prefListExtend.get(key)
+          user.prefListExtend.remove(key)
+        }
+        value += row._2.length.toDouble
+        user.prefListExtend.put(key,value)
       }
     })
 
@@ -189,7 +196,7 @@ object common {
     var result = new CustomizedHashMap[String, Double]()
 
     try{
-      //println(srcJson)
+      println(srcJson)
       var map:CustomizedHashMap[String, Double] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, Double]]() {})
       result = map
     }
@@ -243,16 +250,15 @@ object common {
     var UserName = tokens(1)
     var LawOfworkAndRest = if(tokens(2) == "\"\"") "" else  tokens(2)
     var Area = if(tokens(3) == "\"\"") "" else  tokens(3)
-    var Age = if(tokens(4).isEmpty) 0 else tokens(4).toInt
-    var Gender = if(tokens(5).isEmpty) 0 else tokens(4).toInt
-    var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty) "{}" else tokens(6).substring(1,tokens(8).length-1).replace("\\","")
-    var BooksInterests = if(tokens(7) == "\"\"" || tokens(7).isEmpty) "{}" else tokens(7).substring(1,tokens(8).length-1).replace("\\","")
-    var JournalsInterests = if(tokens(8) == "\"\"" || tokens(8).isEmpty) "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
-    var ReferenceBookInterests = if(tokens(9) == "\"\"" || tokens(9).isEmpty) "{}" else tokens(9).substring(1,tokens(8).length-1).replace("\\","")
-    var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty) "{}" else tokens(10).substring(1,tokens(8).length-1).replace("\\","")
-    var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty) "{}" else tokens(11).substring(1,tokens(8).length-1).replace("\\","")
-    var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty) "{}" else tokens(12).substring(1,tokens(8).length-1).replace("\\","")
-    //var latest_log_time = if(tokens(13).isEmpty || tokens(13) == "\"\"") "" else tokens(13)
+    var Age = 0
+    var Gender = 0
+    var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty || tokens(6) == "{}") "{}" else tokens(6).substring(1,tokens(6).length-1).replace("\\","")
+    var BooksInterests = if(tokens(7) == "\"\"" || tokens(7).isEmpty || tokens(7) == "{}") "{}" else tokens(7).substring(1,tokens(7).length-1).replace("\\","")
+    var JournalsInterests = if(tokens(8) == "\"\"" || tokens(8).isEmpty || tokens(8) == "{}") "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+    var ReferenceBookInterests = if(tokens(9) == "\"\"" || tokens(9).isEmpty || tokens(9) == "{}") "{}" else tokens(9).substring(1,tokens(9).length-1).replace("\\","")
+    var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty || tokens(10) == "{}") "{}" else tokens(10).substring(1,tokens(10).length-1).replace("\\","")
+    var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty || tokens(11) == "{}") "{}" else tokens(11).substring(1,tokens(11).length-1).replace("\\","")
+    var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty || tokens(12) == "{}") "{}" else tokens(12).substring(1,tokens(12).length-1).replace("\\","")
     users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,logTime.value)
   }
 
@@ -375,5 +381,13 @@ object common {
       recommendations(tuple._1, tuple._2, tuple._3, tuple._4, tuple._5)
     })
     recommandRDD
+  }
+
+  def filterLog(logObj: UserLogObj):Boolean ={
+      val arr =Array("","spider","+Galaxy+Nexus+Build/ICL53F)+","bingbot","trendkite-akashic-crawler","SHV-E250S Build/JZO54K","python-requests","Googlebot-Image","Scrapy")
+
+      var res = if(logObj !=null && !arr.contains(logObj.ua)) true else false
+
+    res
   }
 }

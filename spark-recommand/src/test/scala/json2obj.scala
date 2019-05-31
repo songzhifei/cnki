@@ -5,24 +5,21 @@ object json2obj {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.master("local[*]").appName("json2map").getOrCreate
 
-
+    val logTime = spark.sparkContext.broadcast(getNowStr())
     import spark.implicits._
-    val userList = spark.read.textFile("E:/test/recommend-system/journal/UserPortraitOutput/").rdd.map(formatUsers).toDF()
-    val userRDD = userList.rdd.map(row=>{
-      row.getAs[String]("UserName")
-    }).collect()
+    val userList = spark.read.textFile("E:/test/recommend-system/journal/UserPortraitOutput/").rdd.map(line=>formatUsers(line,logTime)).toDF()
 
-    var lines = spark.read.textFile("E:/test/recommend-system/bianke_User.csv").rdd
-
-    var biankeNewUsers = lines
-      .filter(user=> !userRDD.contains(user) && user != "" && !user.isEmpty)
-        .map(str=>{
-          users(0, str, "", "", 0, 0, "", "", "", "", "", "", "", "")
-        }).toDF()
+    //var lines = spark.read.textFile("E:/test/recommend-system/bianke_User.csv").rdd
 
 
-    /*根据用户浏览日志更新用户基本信息
-        var lines = spark.read.textFile("E:/test/recommend-system/journal/userlog/").rdd
+    val userRDD = userList.select("UserName").rdd.collect()
+
+    val usrRddBroadCast = spark.sparkContext.broadcast(userRDD)
+
+
+    /*根据用户浏览日志更新用户基本信息 **/
+
+    var lines = spark.read.textFile("E:/test/recommend-system/journal/userlog/").rdd
 
 
     val logDataFrame = lines.map(formatUserLog).filter(log=>log != null).toDF()
@@ -31,13 +28,13 @@ object json2obj {
 
     val newUsers = logTempDataFrame.rdd.filter(row => {
       var userName = row.getAs[String](1)
-      var bool = if (userRDD.contains(userName)) false else true
+      var bool = if (usrRddBroadCast.value.contains(userName)) false else true
       bool
     }).map(row => {
       var userName = row.getAs[String](1)
       users(0, userName, "", "", 0, 0, "", "", "", "", "", "", "", "")
     }).toDF()
-    **/
+
 
     //根据mysql更新用户信息
     /*
@@ -63,7 +60,7 @@ object json2obj {
 
 
     userList
-      .union(biankeNewUsers)
+      //.union(biankeNewUsers)
       //.union(newUsers)
       .repartition(1)
       .write
@@ -73,7 +70,7 @@ object json2obj {
       //.option("header",true)
       .mode(SaveMode.Overwrite)
       .save("E:/test/recommend-system/journal/UserPortraitOutputTemp")
-    print(biankeNewUsers.collect().length)
+    //print(biankeNewUsers.collect().length)
     //println("当前日志已知的用户数："+logTempDataFrame.join(userList,userList("UserName") === logTempDataFrame("un")).collect().length)
 
     /**

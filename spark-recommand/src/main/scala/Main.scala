@@ -27,9 +27,9 @@ object Main {
     import spark.implicits._
     val userDataFrame = userList.toDF()
     //2.2 获取所有待推荐的商品列表（格式化所有新闻对应的关键词及关键词的权重）
-    val newsList = spark.read.textFile(args(3)).rdd.map(formatNews).collect()
+    //val newsList = spark.read.textFile(args(3)).rdd.map(formatNews).collect()
 
-    val newsBroadCast = spark.sparkContext.broadcast(newsList)
+    //val newsBroadCast = spark.sparkContext.broadcast(newsList)
 
     var SingleArticleInterestList = userList.map(user=>{
       UserArticleTemp(user.UserID.toLong,user.UserName,user.SingleArticleInterest,jsonArticlePrefListtoMap(user.SingleArticleInterest),user.latest_log_time)
@@ -63,7 +63,7 @@ object Main {
     val PurchaseIntentionInterestsExtend = PurchaseIntentionInterestsList.map(autoDecRefresh)
 
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(log=>log != null).toDF().where("un is not null and un != ''")
+    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un is not null and un != '' and rcc !=''")
 
     val articleLog = newsLogDataFrame.where("ro = 'article'")
 
