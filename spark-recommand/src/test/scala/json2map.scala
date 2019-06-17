@@ -4,7 +4,7 @@ import org.apache.spark.sql.SparkSession
 import org.codehaus.jackson.JsonParseException
 import org.codehaus.jackson.`type`.TypeReference
 import org.codehaus.jackson.map.{JsonMappingException, ObjectMapper}
-import common._
+import CommonFuction._
 
 object json2map {
   def main(args: Array[String]): Unit = {

@@ -1,5 +1,5 @@
 import org.apache.spark.sql.SparkSession
-import common._
+import CommonFuction._
 
 object readCSV {
   def main(args: Array[String]): Unit = {

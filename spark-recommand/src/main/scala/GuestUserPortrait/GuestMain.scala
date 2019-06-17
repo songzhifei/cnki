@@ -1,29 +1,16 @@
+//package GuestUserPortrait
+
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
+import scala.collection.mutable.ArrayBuffer
 import CommonFuction._
 import CommonObj._
-import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
 
-import scala.collection.mutable.ArrayBuffer
-
-/*
-* 1.更新用户画像\
-*   1.1. 获取用户画像数据（格式化用户兴趣标签数据）
-*   1.2. 获取用户浏览数据
-*   1.3. 根据用户画像和浏览历史更新各个用户的用户兴趣标签
-*   1.4. 用户新的画像数据保存到对应的表中
-* 2.使用新画像根据CB生成推荐
-*   2.1 获取用户画像数据（格式化用户兴趣标签数据）
-*   2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
-*   2.3 循环各用户，计算所有新闻跟用户的相关度
-*   2.4 过滤（相似度为0，已经看过的，重复的，已经推荐过，截取固定数量的的新闻）
-*   2.5 生成推荐列表
-* */
-
-object Main {
+object GuestMain {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder
       //.master("local[*]")
-      .appName("recommand-system")
+      .appName("GuestMain")
       .getOrCreate
     import spark.implicits._
     val logTime = spark.sparkContext.broadcast(getNowStr())
@@ -31,10 +18,10 @@ object Main {
     var userList = spark.read.textFile(args(0)).rdd.map(line=>formatUsers(line,logTime)).filter(user=> !user.UserName.isEmpty)
 
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un is not null and un != '' and rcc !=''")
+    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un = '' and rcc !=''")
 
     //1.2通过日志更新新的用户信息
-    val newUserList = getNewUserList(userList.toDF(),newsLogDataFrame,logTime)
+    val newUserList = getNewGuestUserList(userList.toDF(),newsLogDataFrame,logTime)
 
     userList = userList.union(newUserList)
 
@@ -79,16 +66,16 @@ object Main {
 
     val articleLogList = articleLog
       .rdd
-      .map(row => {Log_Temp(row.getAs("un"), row.getAs("vt"), "", "", row.getAs("rcc"), null)})
+      .map(row => {Log_Temp(row.getAs("gki"), row.getAs("vt"), "", "", row.getAs("rcc"), null)})
       .groupBy(_.username)
       .map(row => {
-      val iterator = row._2.iterator
-      var arr = new ArrayBuffer[Log_Temp]()
-      while (iterator.hasNext) {
-        arr += iterator.next()
-      }
-      (row._1, arr.toArray)
-    })
+        val iterator = row._2.iterator
+        var arr = new ArrayBuffer[Log_Temp]()
+        while (iterator.hasNext) {
+          arr += iterator.next()
+        }
+        (row._1, arr.toArray)
+      })
 
 
     val articleLogBroadCast = spark.sparkContext.broadcast(articleLogList.collectAsMap())
@@ -96,7 +83,7 @@ object Main {
     val SingleArticleInterestFrame = SingleArticleInterestExtend.map(user=>getUserArticlePortrait(user,articleLogBroadCast)).toDF()
 
     //根据用户浏览日志信息，更新用户文章类别画像
-    val bookLog = newsLogDataFrame.where("ro = 'tushu'").select("un","ri")
+    val bookLog = newsLogDataFrame.where("ro = 'tushu'").select("gki","ri")
 
     var BooksInterestsFrame:DataFrame = null;
 
@@ -104,7 +91,7 @@ object Main {
 
       val bookLogDataFrame = bookLog.rdd.map(row => {
         var id = row.getAs[String]("ri")
-        var username = row.getAs[String]("un")
+        var username = row.getAs[String]("gki")
         BookLogInfo(username,id, "", "")
       }).toDF()
 
@@ -186,6 +173,8 @@ object Main {
           , userDataFrame("PurchaseIntentionInterests")
           , userDataFrame("latest_log_time")
         )
+        .where("SingleArticleInterest !='{}'")
+
     }
 
     resultDataFrame.show()

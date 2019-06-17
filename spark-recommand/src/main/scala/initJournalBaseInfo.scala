@@ -1,4 +1,5 @@
-import common._
+import CommonFuction._
+import CommonObj.JournalBaseTemp
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 object initJournalBaseInfo {

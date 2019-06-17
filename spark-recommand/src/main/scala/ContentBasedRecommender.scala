@@ -1,5 +1,7 @@
 import org.apache.spark.sql.{SaveMode, SparkSession}
-import common._
+import CommonFuction._
+import CommonObj._
+
 
 /*
 *  根据内容相关度进行推荐

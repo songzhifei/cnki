@@ -82,4 +82,6 @@ object test {
   case class journalbaseinfo_temp(id:BigInt, PYKM:String, C_Name:String,CYKM:String, CBD:String, ZJ_Code:String, ZT_Code:String, CreateOn:String,Keywords:String)
 
   case class news_temp(id:BigInt, content:String, news_time:String, title:String, module_id:Int, url:String, keywords:String)
+
+  case class UserTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
 }

@@ -1,4 +1,4 @@
-import common.formatNews
+import CommonFuction.formatNews
 import org.apache.spark.ml.feature.{HashingTF, IDF, Word2Vec}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import scala.collection.mutable.ArrayBuffer

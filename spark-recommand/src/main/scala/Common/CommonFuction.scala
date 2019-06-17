@@ -1,64 +1,29 @@
+//package Common
+
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.{ArrayList, Date}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.DataFrame
 import org.codehaus.jackson.JsonParseException
 import org.codehaus.jackson.`type`.TypeReference
 import org.codehaus.jackson.map.{JsonMappingException, ObjectMapper}
 import org.json4s.DefaultFormats
 import org.json4s.jackson.JsonMethods.parse
 import scala.collection.mutable.ArrayBuffer
-
+import CommonObj._
 /**
   *
   * 公用方法类
   *
   * */
-object common {
+object CommonFuction {
 
 
   var objectMapper:ObjectMapper = null
 
   var SEP = "&"
-
-  /*
-  *
-  描述        代码      缩写
-  来访时间戳	visittime	vt
-  用户名	username	un
-  匿名用户的cookie id	guestidcookie	gki
-  行为类型	action	ac
-  资源对象	resourceobject	ro
-  资源所属kbase库	kbaselibcode	klc
-  资源ID	resourceid	ri
-  价格	price	p
-  IP	clientip	ci
-  UserAgent	useragent	ua
-  资源标准分类	resoureclasscode	rcc
-  资源自定义分类	resourecustomclasscode	rccc
-  平台代码	platformcode	pfc
-  设备类型	devicetype	dt
-  移动设备ID	deviceid	di
-  *
-  * */
-  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
-
-  case class UserTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
-
-  case class UserArticleTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, Double],latest_log_time:String)
-
-  case class NewsLog_Temp(username:String,view_time:String,title:String,content:String,module_id:String,map:CustomizedHashMap[String, Double])
-
-  case class users(UserID:BigInt,UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,ProductviscosityInterests:String,PurchaseIntentionInterests:String,latest_log_time:String)
-
-  case class UserPortrait(UserID:BigInt,UserName:String,LawOfworkAndRest:Int,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String)
-
-  case class NewsTemp(id:Long, content:String, news_time:String, title:String, module_id:String, keywords:CustomizedHashMap[String, Double])
-
-  case class JournalBaseTemp(id:Long,PYKM:String, content:String, news_time:String, title:String, module_id:String, keywords:String)
-
-  case class recommendations(user_id:BigInt,username:String,news_id:BigInt,news_title:String,score:Double)
 
   def autoDecRefresh(user:UserTemp): UserTemp ={
 
@@ -108,14 +73,58 @@ object common {
 
   }
 
-  def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]],logTime:Broadcast[String]): UserTemp ={
-    val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[NewsLog_Temp](0))
-    //println("处理前的rateMap：" + user.prefListExtend.toString)
+  def autoDecRefreshArticleInterests(user:UserArticleTemp): UserArticleTemp ={
+
+    //用于删除喜好值过低的关键词
+    val keywordToDelete = new ArrayList[String]
+
+    val map =user.prefListExtend
+
+    var baseAttenuationCoefficient = 0.9
+
+    var times = 1L
+
+    if(!user.latest_log_time.isEmpty && user.latest_log_time != "\"\"" && user.latest_log_time !="{}")
+      times = intervalTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(user.latest_log_time),new Date())
+
+    for(i<- 0 to times.toInt - 1) baseAttenuationCoefficient *= baseAttenuationCoefficient
+
+    var newMap:CustomizedHashMap[String, Double] = new CustomizedHashMap[String, Double]
+
+
+    val ite = map.keySet.iterator
+
+    while (ite.hasNext){
+      //用户对应模块的喜好不为空
+      val key = ite.next
+
+      var value = map.get(key)
+
+      value = value * baseAttenuationCoefficient
+
+      if(value < 0.01) keywordToDelete.add(key)
+
+      newMap.put(key,value)
+
+      import scala.collection.JavaConversions._
+      for (deleteKey <- keywordToDelete) {
+        newMap.remove(deleteKey)
+      }
+      keywordToDelete.clear()
+    }
+
+    UserArticleTemp(user.UserID,user.UserName,user.prefList,newMap,user.latest_log_time)
+
+  }
+
+  def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]],logTime:Broadcast[String]): UserTemp ={
+    val newsList: Array[Log_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
+    println("处理前的rateMap：" + user.prefListExtend.toString)
     if (newsList.length >0) {
       //1.3. 根据用户画像和浏览历史更新各个用户的用户兴趣标签
       for(news <- newsList){
         var rateMap: CustomizedHashMap[String, Double] = user.prefListExtend.get(news.module_id)
-        //println("原始rateMap：" + rateMap)
+        println("原始rateMap：" + rateMap,news.map)
         if(news.map !=null && news.map.size > 0 && rateMap == null){
           rateMap = new CustomizedHashMap[String,Double]()
           user.prefListExtend.put(news.module_id,rateMap)
@@ -131,17 +140,17 @@ object common {
           }
         }
 
-        //println("处理后的rateMap：" + user.prefListExtend.get(news.module_id))
+        println("处理完的rateMap：" + user.prefListExtend.get(news.module_id))
       }
     }
-    //println("处理后的rateMap：" + user.prefListExtend.toString)
+    println("处理后的rateMap：" + user.prefListExtend.toString)
 
     UserTemp(user.UserID,user.UserName,user.prefList,user.prefListExtend,logTime.value)
     //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
   }
 
-  def getUserArticlePortrait(user:UserArticleTemp,newsBroadCast:Broadcast[collection.Map[String, Array[NewsLog_Temp]]]):users={
-    val newsList: Array[NewsLog_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[NewsLog_Temp](0))
+  def getUserArticlePortrait(user:UserArticleTemp,newsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]]):users={
+    val newsList: Array[Log_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
 
     newsList.groupBy(_.module_id).map(row=>{
 
@@ -155,6 +164,9 @@ object common {
         }
         value += row._2.length.toDouble
         user.prefListExtend.put(key,value)
+      }
+      if(user.prefListExtend.size()>20){
+
       }
     })
 
@@ -196,7 +208,8 @@ object common {
     var result = new CustomizedHashMap[String, Double]()
 
     try{
-      println(srcJson)
+      //
+      //println(srcJson)
       var map:CustomizedHashMap[String, Double] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, Double]]() {})
       result = map
     }
@@ -245,21 +258,26 @@ object common {
 
   def formatUsers(line:String,logTime:Broadcast[String]):users={
     val tokens = line.split(SEP)
-    //UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
-    var UserID = tokens(0).toInt
-    var UserName = tokens(1)
-    var LawOfworkAndRest = if(tokens(2) == "\"\"") "" else  tokens(2)
-    var Area = if(tokens(3) == "\"\"") "" else  tokens(3)
-    var Age = 0
-    var Gender = 0
-    var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty || tokens(6) == "{}") "{}" else tokens(6).substring(1,tokens(6).length-1).replace("\\","")
-    var BooksInterests = if(tokens(7) == "\"\"" || tokens(7).isEmpty || tokens(7) == "{}") "{}" else tokens(7).substring(1,tokens(7).length-1).replace("\\","")
-    var JournalsInterests = if(tokens(8) == "\"\"" || tokens(8).isEmpty || tokens(8) == "{}") "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
-    var ReferenceBookInterests = if(tokens(9) == "\"\"" || tokens(9).isEmpty || tokens(9) == "{}") "{}" else tokens(9).substring(1,tokens(9).length-1).replace("\\","")
-    var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty || tokens(10) == "{}") "{}" else tokens(10).substring(1,tokens(10).length-1).replace("\\","")
-    var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty || tokens(11) == "{}") "{}" else tokens(11).substring(1,tokens(11).length-1).replace("\\","")
-    var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty || tokens(12) == "{}") "{}" else tokens(12).substring(1,tokens(12).length-1).replace("\\","")
-    users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,logTime.value)
+    if(tokens.size == 14){
+      //UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
+      //println(tokens.length)
+      var UserID = tokens(0).toInt
+      var UserName = tokens(1)
+      var LawOfworkAndRest = if(tokens(2) == "\"\"") "" else  tokens(2)
+      var Area = if(tokens(3) == "\"\"") "" else  tokens(3)
+      var Age = 0
+      var Gender = 0
+      var SingleArticleInterest = if(tokens(6) == "\"\"" || tokens(6).isEmpty || tokens(6) == "{}") "{}" else tokens(6).substring(1,tokens(6).length-1).replace("\\","")
+      var BooksInterests = if(tokens(7) == "\"\"" || tokens(7).isEmpty || tokens(7) == "{}") "{}" else tokens(7).substring(1,tokens(7).length-1).replace("\\","")
+      var JournalsInterests = if(tokens(8) == "\"\"" || tokens(8).isEmpty || tokens(8) == "{}") "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+      var ReferenceBookInterests = if(tokens(9) == "\"\"" || tokens(9).isEmpty || tokens(9) == "{}") "{}" else tokens(9).substring(1,tokens(9).length-1).replace("\\","")
+      var CustomerPurchasingPowerInterests = if(tokens(10) == "\"\"" || tokens(10).isEmpty || tokens(10) == "{}") "{}" else tokens(10).substring(1,tokens(10).length-1).replace("\\","")
+      var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty || tokens(11) == "{}") "{}" else tokens(11).substring(1,tokens(11).length-1).replace("\\","")
+      var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty || tokens(12) == "{}") "{}" else tokens(12).substring(1,tokens(12).length-1).replace("\\","")
+      users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,logTime.value)
+    }else{
+      users(0,"","","",0,0,"","","","","","","",logTime.value)
+    }
   }
 
   def formatNews(line:String): NewsTemp ={
@@ -347,14 +365,14 @@ object common {
     sortedTuples
   }
 
-  def formatUserViewLogs(line:String): NewsLog_Temp ={
+  def formatUserViewLogs(line:String): Log_Temp ={
     val tokens = line.split("::")
 
     //val date1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(tokens(1))
 
     val map = jsonPrefListtoMap(tokens(4))
 
-    NewsLog_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),map.get(tokens(3)))
+    Log_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),map.get(tokens(3)))
   }
 
   def formatUserLog(line:String):UserLogObj={
@@ -370,9 +388,29 @@ object common {
     obj
   }
 
+  def formateBookInfo(line:String):BookBaseInfo={
+    val strings = line.split(SEP)
+    if(strings.size == 5){
+      BookBaseInfo(strings(0),strings(1),strings(2),strings(3),strings(4).replace("\\",""))
+    }else{
+      BookBaseInfo("","","","","")
+    }
+  }
+
   def getNowStr():String={
     var now =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
     now
+  }
+
+  def getToday():String={
+    var today = new SimpleDateFormat("yyyy-MM-dd").format(new Date())
+    today
+  }
+
+  def getYesterday():String={
+    var today = new Date()
+    var yesterday = new SimpleDateFormat("yyyy-MM-dd").format( today.getTime -  86400000L)
+    yesterday
   }
 
   def recommand(userList:RDD[UserTemp],newsBroadCast:Broadcast[Array[NewsTemp]]): RDD[recommendations] ={
@@ -389,5 +427,39 @@ object common {
       var res = if(logObj !=null && !arr.contains(logObj.ua)) true else false
 
     res
+  }
+
+  def getNewUserList(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[users]={
+
+    val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
+      row.getAs[String](0)
+    }).persist()
+
+    val newUserList = newsLogDataFrame.select("un").distinct().rdd.map(row => {
+      row.getAs[String](0)
+    }).subtract(userRDD).map(str => {
+      users(0, str, "", "", 0, 0, "{}", "{}", "{}", "{}", "{}", "{}", "{}", logTime.value)
+    })
+    //userRDD.unpersist()
+
+    newUserList
+
+  }
+
+  def getNewGuestUserList(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[users]={
+
+    val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
+      row.getAs[String](0)
+    }).persist()
+
+    val newUserList = newsLogDataFrame.select("gki").distinct().rdd.map(row => {
+      row.getAs[String](0)
+    }).subtract(userRDD).map(str => {
+      users(0, str, "", "", 0, 0, "{}", "{}", "{}", "{}", "{}", "{}", "{}", logTime.value)
+    })
+    //userRDD.unpersist()
+
+    newUserList
+
   }
 }

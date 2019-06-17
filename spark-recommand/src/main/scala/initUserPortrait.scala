@@ -1,4 +1,5 @@
-import common.{SEP, users}
+import CommonFuction.{SEP}
+import CommonObj._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
