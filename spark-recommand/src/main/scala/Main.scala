@@ -33,6 +33,8 @@ object Main {
     //此处需要添加对一些基本的不符合条件的日志过滤掉
     val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un is not null and un != '' and rcc !=''")
 
+    newsLogDataFrame.cache()
+
     //1.2通过日志更新新的用户信息
     val newUserList = getNewUserList(userList.toDF(),newsLogDataFrame,logTime)
 
@@ -43,7 +45,7 @@ object Main {
 
     //2.2 获取所有不同类别的兴趣标签
     var SingleArticleInterestList = userList.map(user=>{
-      UserArticleTemp(user.UserID.toLong,user.UserName,user.SingleArticleInterest,jsonArticlePrefListtoMap(user.SingleArticleInterest),user.latest_log_time)
+      UserTemp(user.UserID.toLong,user.UserName,user.SingleArticleInterest,jsonPrefListtoMap(user.SingleArticleInterest),user.latest_log_time)
     })
     var BooksInterestsList = userList.map(user=>{
       UserTemp(user.UserID.toLong,user.UserName,user.BooksInterests,jsonPrefListtoMap(user.BooksInterests),user.latest_log_time)
@@ -65,7 +67,7 @@ object Main {
     })
 
     //用户兴趣标签值衰减
-    val SingleArticleInterestExtend = SingleArticleInterestList.map(autoDecRefreshArticleInterests)
+    val SingleArticleInterestExtend = SingleArticleInterestList.map(autoDecRefresh)
     //val BooksInterestsExtend = BooksInterestsList.map(autoDecRefresh)
     val JournalsInterestsExtend = JournalsInterestsList.map(autoDecRefresh)
     val ReferenceBookInterestsExtend = ReferenceBookInterestsList.map(autoDecRefresh)
@@ -93,7 +95,7 @@ object Main {
 
     val articleLogBroadCast = spark.sparkContext.broadcast(articleLogList.collectAsMap())
 
-    val SingleArticleInterestFrame = SingleArticleInterestExtend.map(user=>getUserArticlePortrait(user,articleLogBroadCast)).toDF()
+    val SingleArticleInterestFrame = SingleArticleInterestExtend.map(user=>getUserPortrait(user,articleLogBroadCast,logTime)).toDF()
 
     //根据用户浏览日志信息，更新用户文章类别画像
     val bookLog = newsLogDataFrame.where("ro = 'tushu'").select("un","ri")

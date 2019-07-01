@@ -17,19 +17,24 @@ object tushuRanking {
 
     val tushuLog = newsLogDataFrame.where("ro = 'tushu'")
 
-    val rankingArticle = tushuLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
-      (tuple._1, tuple._2.toList.length)
-    }).top(num)(Ordering.by(e => e._2))
+    val articleNewFrame = tushuLog.groupBy("ri").agg(Map("ri"->"count"))
+
+    val dataFrame = articleNewFrame.orderBy(articleNewFrame("count(ri)").desc).limit(num)
 
     /*
+        val rankingArticle = tushuLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
+      (tuple._1, tuple._2.toList.length)
+    }).top(num)(Ordering.by(e => e._2))
         val rankingArticle = articleLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
       (tuple._1, tuple._2.toList.length)
     }).sortBy(_._2, ascending = false).take(100)
-    * */
 
-    val dataFrame = spark.sparkContext.parallelize(rankingArticle).map(tuple => {
+        val dataFrame = spark.sparkContext.parallelize(rankingArticle).map(tuple => {
       tushuRankingObj(tuple._1, tuple._2)
     }).toDF()
+    * */
+
+
     dataFrame.repartition(1)
       .write
       .format("csv")

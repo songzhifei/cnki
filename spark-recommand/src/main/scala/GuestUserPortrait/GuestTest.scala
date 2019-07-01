@@ -17,9 +17,30 @@ object GuestTest {
     //1.1. 获取用户画像数据（格式化用户兴趣标签数据）getYesterday() +
     var userList = spark.read.textFile(args(0)).rdd.map(line=>formatUsers(line,logTime)).filter(user=> !user.UserName.isEmpty)
 
-
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un = '' and rcc !=''")
+    //val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un = '' and rcc !=''")
+    val newsLogRDD = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog)
+
+    newsLogRDD.cache()
+    //过滤浏览次数2000以上的人（正常认为浏览不应该超过2000次）
+    //val uaArray = newsLogRDD.toDF().groupBy("ua").agg(Map("ua"->"count")).where("count(ua)>2000").rdd.map(row=>{row.getAs[String]("ua")}).collect()
+
+    val uaTuples = newsLogRDD.toDF().groupBy("ua", "ci").agg(Map("ua" -> "count")).where("count(ua)>100").rdd.map(row => {
+      (row.getAs[String]("ua"), row.getAs[String]("ci"))
+    }).collect()
+    val newsLogDataFrame = newsLogRDD.filter(row=>{
+      var res = true
+      import scala.util.control.Breaks._
+      breakable{
+        for(tuple <- uaTuples){
+          res = !(tuple._1.equals(row.ua) && tuple._2.equals(row.ci))
+          if(!res) break
+        }
+      }
+      res
+    }).toDF().where("un = '' and rcc !=''")
+
+    //val newsLogDataFrame = newsLogRDD.filter(row=> !uaArray.contains(row.ua)).toDF().where("un = '' and rcc !=''")
 
     //1.2通过日志更新新的用户信息
     val newUserList = getNewGuestUserList(userList.toDF(),newsLogDataFrame,logTime)
@@ -33,8 +54,6 @@ object GuestTest {
 
     /**      *
       */
-
-
 
     //2.2 获取所有不同类别的兴趣标签
     var SingleArticleInterestList = userList.map(user=>{

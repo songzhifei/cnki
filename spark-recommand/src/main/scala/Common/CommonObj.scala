@@ -11,6 +11,8 @@ object CommonObj {
 资源对象	resourceobject	ro
 资源所属kbase库	kbaselibcode	klc
 资源ID	resourceid	ri
+关键词	resourcekeyword	rkd
+检索词	searchword	sw
 价格	price	p
 IP	clientip	ci
 UserAgent	useragent	ua
@@ -21,7 +23,7 @@ UserAgent	useragent	ua
 移动设备ID	deviceid	di
 *
 * */
-  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
+  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,rkd:String,sw:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
 
 
 

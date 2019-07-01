@@ -9,7 +9,6 @@ object articleRanking {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder
-      //.master("local[*]")
       .appName("articleRanking")
       .getOrCreate
 
@@ -23,19 +22,24 @@ object articleRanking {
 
     val articleLog = newsLogDataFrame.where("ro = 'article'")
 
-    val rankingArticle = articleLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
-      (tuple._1, tuple._2.toList.length)
-    }).sortBy(_._2, ascending = false).take(num)
+    val articleNewFrame = articleLog.groupBy("ri").agg(Map("ri"->"count"))
+
+    val dataFrame = articleNewFrame.orderBy(articleNewFrame("count(ri)").desc).limit(num)
+
 
     /*
+        val rankingArticle = articleLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
+      (tuple._1, tuple._2.toList.length)
+    }).sortBy(_._2, ascending = false).take(num)
     articleLog.rdd.groupBy(_.getAs[String]("ri")).map(tuple => {
       (tuple._1, tuple._2.toList.length)
     }).top(100)(Ordering.by(e => e._2))
-    * */
-
-    val dataFrame = spark.sparkContext.parallelize(rankingArticle).map(tuple => {
+       val dataFrame = spark.sparkContext.parallelize(rankingArticle).map(tuple => {
       articleRankingObj(tuple._1, tuple._2)
     }).toDF()
+    * */
+
+
     dataFrame.repartition(1)
       .write
       .format("csv")

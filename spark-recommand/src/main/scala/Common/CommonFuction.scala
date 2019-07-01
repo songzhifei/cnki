@@ -25,6 +25,47 @@ object CommonFuction {
 
   var SEP = "&"
 
+  var spiderArray = Array(
+    "spider",
+    "+Galaxy+Nexus+Build/ICL53F)+",
+    "bingbot",
+    "trendkite-akashic-crawler",
+    "SHV-E250S Build/JZO54K",
+    "python-requests",
+    "Googlebot-Image",
+    "Scrapy",
+    "Baiduspider",
+    "YisouSpider",
+    "Kazehakase",
+    "(+https://scrapy.org)",
+    "Windows; U; MSIE",
+    "Bytespider",
+    "ToutiaoSpider",
+    "360Spider",
+    "baiduboxapp",
+    "bot",
+    "SinaWeiboBot",
+    "Googlebot",
+    "DotBot",
+    "Facebot",
+    "applebot",
+    "cliqzbot",
+    "SurveyBot",
+    "MagiBot",
+    "oBot",
+    "KomodiaBot",
+    "aiHitBot",
+    "LinkpadBot",
+    "MJ12bot",
+    "TurnitinBot",
+    "YoudaoBot",
+    "http://mappydata.net/bot",
+    "coccocbot-web",
+    "Twitterbot",
+    "YandexMobileBot",
+    "SEMrushBot"
+  )
+
   def autoDecRefresh(user:UserTemp): UserTemp ={
 
     //用于删除喜好值过低的关键词
@@ -381,7 +422,7 @@ object CommonFuction {
     if(strings.size == 2){
       //导入隐式值
       implicit val formats = DefaultFormats
-      obj  = parse(strings(1),true,false).extract[UserLogObj]
+      obj  = parse(strings(1),false).extract[UserLogObj]
     }else{
       println(line)
     }
@@ -422,10 +463,14 @@ object CommonFuction {
   }
 
   def filterLog(logObj: UserLogObj):Boolean ={
-      val arr =Array("","spider","+Galaxy+Nexus+Build/ICL53F)+","bingbot","trendkite-akashic-crawler","SHV-E250S Build/JZO54K","python-requests","Googlebot-Image","Scrapy")
-
-      var res = if(logObj !=null && !arr.contains(logObj.ua)) true else false
-
+      var res = true
+      import scala.util.control.Breaks._
+      breakable{
+        for(ua<- spiderArray){
+          res = logObj != null && !logObj.ua.toLowerCase.contains(ua.toLowerCase)
+          if(!res) break
+        }
+      }
     res
   }
 
