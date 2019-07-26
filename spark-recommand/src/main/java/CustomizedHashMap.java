@@ -2,17 +2,11 @@
  * 
  */
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 
-/**
- * @author qianxinyao
- * @email tomqianmaple@gmail.com
- * @github https://github.com/bluemapleman
- * @date 2016年11月23日
- */
-public class CustomizedHashMap<K, V> extends HashMap<K,V>
+
+public class CustomizedHashMap<K, V> extends LinkedHashMap<K,V>
 {
 	private static final long serialVersionUID = 1L;
 
@@ -29,6 +23,7 @@ public class CustomizedHashMap<K, V> extends HashMap<K,V>
 		}
 		else{
 			toString=toString.substring(0, toString.length()-1)+"}";
+			//toString = toString.substring(0,toString.length()-1);
 		}
 		return toString;
 

@@ -66,7 +66,7 @@ object GuestMain {
 
     val articleLogList = articleLog
       .rdd
-      .map(row => {Log_Temp(row.getAs("gki"), row.getAs("vt"), "", "", row.getAs("rcc"), null)})
+      .map(row => {Log_Temp(row.getAs("gki"), row.getAs("vt"), "", "", row.getAs("rcc"),"", null)})
       .groupBy(_.username)
       .map(row => {
         val iterator = row._2.iterator
@@ -109,7 +109,7 @@ object GuestMain {
         var username = row.getAs("username")
         var module_id = row.getAs("class_code")
         var preflist = jsonArticlePrefListtoMap(row.getAs("keywords"))
-        Log_Temp(username,"","","",module_id,preflist)
+        Log_Temp(username,"","","",module_id,"",preflist)
       }).groupBy(_.username).map(row => {
         val iterator = row._2.iterator
         var arr = new ArrayBuffer[Log_Temp]()

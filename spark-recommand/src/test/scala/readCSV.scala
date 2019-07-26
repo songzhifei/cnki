@@ -1,5 +1,14 @@
-import org.apache.spark.sql.SparkSession
-import CommonFuction._
+import java.util.Date
+
+import org.apache.spark.sql.{SaveMode, SparkSession}
+import CommonFuction.{objectMapper, _}
+import CommonObj.{UserLogObj, usersNew}
+import org.codehaus.jackson.`type`.TypeReference
+import org.codehaus.jackson.map.ObjectMapper
+import org.json4s.DefaultFormats
+import org.json4s.jackson.JsonMethods.parse
+
+import scala.util.parsing.json.JSON
 
 object readCSV {
   def main(args: Array[String]): Unit = {
@@ -7,25 +16,19 @@ object readCSV {
 
     /*
     import spark.implicits._
-    val dataFrame = spark
-      .read
-      .option("sep", ";")
-      //.option("header", true)
-      .csv("E:\\test\\recommend-system\\journal\\UserPortraitOutput\\")
-      .toDF("id","name","prefList","latest_log_time")
-    //dataFrame.show(20)
-    val userList = dataFrame.rdd.map(row => {
-      var pre = row.getAs[String]("prefList")
-      var id = row.getAs[String]("id")
+    val logTime = spark.sparkContext.broadcast(getNowStr())
+    //1.1. 获取用户画像数据（格式化用户兴趣标签数据）getYesterday() +
+    var userList = spark.read.textFile("E:/test/recommend-system/journal/userlog/2019-07-13").rdd.map(line=>formatUsersNew(line,logTime)).filter(user=> !user.UserName.isEmpty)
 
-      var map = jsonPrefListtoMap(pre)
-      var name = row.getAs[String]("name")
 
-      UserTemp(id.toLong, name, pre, map, row.getAs[String]("latest_log_time"))
-    })
-    userList.collect()*/
-    //2.2 获取所有待推荐的新闻列表（格式化所有新闻对应的关键词及关键词的权重）
-    val newsList = spark.read.textFile("E:/test/journals-recommand-source/journalbaseinfo_temp.csv").rdd.map(formatNews).collect()
-    spark.stop()
+    userList.map(user=>{
+
+      jsonConcernedSubjectListToMap(user.TotalRelatedAuthor).toString
+    }).collect().foreach{println}
+    */
+    //spark.read.parquet("E:/test/recommend-system/journal/userlog/2019-07-13").
+
+
+      spark.stop()
   }
 }

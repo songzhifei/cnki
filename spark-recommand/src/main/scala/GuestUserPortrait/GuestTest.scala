@@ -101,7 +101,7 @@ object GuestTest {
         for(module_id <- module_arr){
           var value = 1D
           if(newMap.containsKey(module_id)){
-            value = 1D + newMap.get(module_id)
+            //value = 1D + newMap.get(module_id)
             newMap.remove(module_id)
           }
           newMap.put(module_id,value)

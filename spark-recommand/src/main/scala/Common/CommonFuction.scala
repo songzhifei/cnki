@@ -1,18 +1,19 @@
 //package Common
 
-import java.io.IOException
+import java.io.{FileInputStream, IOException}
 import java.text.SimpleDateFormat
-import java.util.{ArrayList, Date}
+import java.util
+import java.util._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
 import org.codehaus.jackson.JsonParseException
 import org.codehaus.jackson.`type`.TypeReference
 import org.codehaus.jackson.map.{JsonMappingException, ObjectMapper}
-import org.json4s.DefaultFormats
-import org.json4s.jackson.JsonMethods.parse
 import scala.collection.mutable.ArrayBuffer
-import CommonObj._
+import CommonObj.{UserArticleTempNew, _}
+import com.alibaba.fastjson.JSON
+
 /**
   *
   * 公用方法类
@@ -24,6 +25,12 @@ object CommonFuction {
   var objectMapper:ObjectMapper = null
 
   var SEP = "&"
+
+  var MinWeight = 0.01
+
+  var MinKeywordsCount = 10
+
+  var BaseAttenuationCoefficient = 0.9
 
   var spiderArray = Array(
     "spider",
@@ -66,6 +73,47 @@ object CommonFuction {
     "SEMrushBot"
   )
 
+  var MysqlURL = ""
+
+  var UserName = "root"
+
+  var Password = "root"
+
+  var DataTable = "huge.cnki_user_portrait"
+
+  def getProperty(): Unit ={
+    var props = new Properties()
+    props.load(new FileInputStream("property.yml"))
+    if(!props.getProperty("MinWeight").isEmpty)
+      MinWeight = props.getProperty("MinWeight").toDouble
+    if(!props.getProperty("MinKeywordsCount").isEmpty)
+      MinKeywordsCount = props.getProperty("MinKeywordsCount").toInt
+    if(!props.getProperty("BaseAttenuationCoefficient").isEmpty)
+      BaseAttenuationCoefficient = props.getProperty("BaseAttenuationCoefficient").toDouble
+    if(!props.getProperty("MysqlURL").isEmpty)
+      MysqlURL = props.getProperty("MysqlURL")
+    if(!props.getProperty("UserName").isEmpty)
+      UserName = props.getProperty("UserName")
+    if(!props.getProperty("Password").isEmpty)
+      Password = props.getProperty("Password")
+    if(!props.getProperty("DataTable").isEmpty)
+      DataTable = props.getProperty("DataTable")
+  }
+
+  def getWeight(str:String):Double={
+    var result = 1D
+    str match {
+      case "browse" => result = 1D
+      case "buy" => result = 2D
+      case "read" => result = 1D
+      case "collect" => result = 1D
+      case "concern" => result = 1D
+      case "comment" => result = 1D
+      case _ => result = 1L
+    }
+    result
+  }
+
   def autoDecRefresh(user:UserTemp): UserTemp ={
 
     //用于删除喜好值过低的关键词
@@ -73,14 +121,12 @@ object CommonFuction {
 
     val map =user.prefListExtend
 
-    var baseAttenuationCoefficient = 0.9
-
     var times = 1L
 
     if(!user.latest_log_time.isEmpty && user.latest_log_time != "\"\"")
       times = intervalTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(user.latest_log_time),new Date())
 
-    for(i<- 0 to times.toInt - 1) baseAttenuationCoefficient *= baseAttenuationCoefficient
+    for(i<- 0 to times.toInt - 1) BaseAttenuationCoefficient *= BaseAttenuationCoefficient
 
     var newMap:CustomizedHashMap[String, CustomizedHashMap[String, Double]] = new CustomizedHashMap[String, CustomizedHashMap[String, Double]]
 
@@ -96,9 +142,9 @@ object CommonFuction {
         while (inIte.hasNext) {
           val key = inIte.next
           //累计TFIDF值乘以衰减系数
-          val result = moduleMap.get(key) * baseAttenuationCoefficient
-          //if (result < 10) keywordToDelete.add(key)
-          moduleMap.put(key, result)
+          val result = (moduleMap.get(key) * BaseAttenuationCoefficient).formatted("%.4f").toDouble
+          if (result < 0.01) keywordToDelete.add(key)
+          moduleMap.put(key, result.toDouble)
         }
       }
       import scala.collection.JavaConversions._
@@ -107,11 +153,150 @@ object CommonFuction {
       }
       //newMap.put()
       keywordToDelete.clear()
-      newMap.put(moduleId,moduleMap)
+
+      if(!moduleMap.isEmpty) newMap.put(moduleId,moduleMap)
     }
 
     UserTemp(user.UserID,user.UserName,user.prefList,newMap,user.latest_log_time)
+  }
 
+  def autoDecRefreshArticleRecentInterests(oldMap:CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]]): CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]] ={
+    import scala.collection.JavaConversions._
+    var moduleId = ""
+    var oldMapIterator = oldMap.keySet().iterator()
+    var stringToWord:CustomizedHashMap[String,CustomizedKeyWord] = new CustomizedHashMap[String,CustomizedKeyWord]
+    var customizedKeyWord = new CustomizedKeyWord()
+    var keywordsToDelete = new ArrayList[String]
+    var times = 1L
+    var keyword = ""
+    var tempWeight = 1D
+    //获取关键词总个数
+    var keywordsTotal = 0
+    if(oldMap.size()>0){
+      while(oldMapIterator.hasNext){
+         moduleId = oldMapIterator.next()
+         keywordsTotal += oldMap.get(moduleId).size()
+      }
+      //当关键词个数小于设定阈值时，权重不再进行衰减,暂时设置0
+      if(keywordsTotal > 0){//衰减规则
+        oldMapIterator = oldMap.keySet().iterator()
+        while(oldMapIterator.hasNext){
+
+          moduleId = oldMapIterator.next()
+
+          stringToWord = oldMap.get(moduleId)
+          //oldMap.remove(moduleId)
+          val stringToWordIterator = stringToWord.keySet().iterator()
+
+          while(stringToWordIterator.hasNext){
+            keyword = stringToWordIterator.next()
+            customizedKeyWord = stringToWord.get(keyword)
+
+            //stringToWord.remove(keyword)
+
+            times = intervalTime(new Date(customizedKeyWord.getDateTime.toLong),new Date())
+
+            tempWeight = customizedKeyWord.getWeight * TagAttenuationUtils.get30TDaysConstant(times.toInt,MinWeight)
+
+            /*
+            import scala.util.control.Breaks._
+            breakable{
+              for(i<- 0 to times.toInt - 1){
+
+                tempWeight *= BaseAttenuationCoefficient
+
+                if(tempWeight <=0.001) break()
+              }
+            }
+            * */
+
+            var newWeight = (if(tempWeight <=0.001) 0.001 else tempWeight).formatted("%.4f").toDouble //设置关键词比重最小阈值，否则可能无限的接近0
+
+            customizedKeyWord.setWeight(newWeight)
+            //customizedKeyWord.setDateTime((new Date()).getTime.toString)
+            //新的关键词比重大于最小阈值或者关键词总数小于最小关键词总数时，不再删除权重值低的关键词
+            //if(newWeight >= minWeight || keywordsTotal-1 <= minKeywordsCount) stringToWord.put(keyword,customizedKeyWord)
+            if(newWeight < MinWeight && keywordsTotal-1 > MinKeywordsCount){
+              keywordsTotal = keywordsTotal - 1
+              keywordsToDelete.add(keyword)
+            }
+          }
+          for(keyword <- keywordsToDelete){
+            stringToWord.remove(keyword)
+          }
+          //关键词按照不同比重排序
+          //stringToWord = orderByHashMap(stringToWord,true)
+          keywordsToDelete.clear()
+        }
+
+      }
+
+      //把学科分类中没有关键词的分类删掉
+      /** */
+      oldMapIterator = oldMap.keySet().iterator()
+      while (oldMapIterator.hasNext){
+        moduleId = oldMapIterator.next()
+        if(oldMap.get(moduleId).size()<=0) keywordsToDelete.add(moduleId)
+      }
+      for(moduleId<-keywordsToDelete){
+        oldMap.remove(moduleId)
+      }
+    }
+    oldMap
+  }
+
+  def autoDecRefreshAuthorRecentInterests(oldMap:CustomizedHashMap[String, CustomizedKeyWord]): CustomizedHashMap[String, CustomizedKeyWord] ={
+    import scala.collection.JavaConversions._
+    var authorId = ""
+    var oldMapIterator = oldMap.keySet().iterator()
+    var customizedKeyWord = new CustomizedKeyWord()
+    var keywordsToDelete = new ArrayList[String]
+    var times = 1L
+    var tempWeight = 1D
+    //获取关键词总个数
+    var keywordsTotal = 0
+    //当关键词个数小于设定阈值时，权重不再进行衰减,暂时设置0
+    if(oldMap.size() > 0){//衰减规则
+
+      oldMapIterator = oldMap.keySet().iterator()
+      while(oldMapIterator.hasNext){
+
+        authorId = oldMapIterator.next()
+
+        customizedKeyWord = oldMap.get(authorId)
+
+        times = intervalTime(new Date(customizedKeyWord.getDateTime.toLong),new Date())
+
+        tempWeight = customizedKeyWord.getWeight * TagAttenuationUtils.get30TDaysConstant(times.toInt,MinWeight)
+        /*
+        import scala.util.control.Breaks._
+        breakable{
+          for(i<- 0 to times.toInt - 1){
+
+            tempWeight *= BaseAttenuationCoefficient
+
+            if(tempWeight <=0.001) break()
+          }
+        }
+        * */
+
+        var newWeight = (if(tempWeight <=0.001) 0.001 else tempWeight).formatted("%.4f").toDouble //设置关键词比重最小阈值，否则可能无限的接近0
+
+        customizedKeyWord.setWeight(newWeight)
+        customizedKeyWord.setDateTime((new Date()).getTime.toString)
+        //新的关键词比重大于最小阈值或者关键词总数小于最小关键词总数时，不再删除权重值低的关键词
+        //if(newWeight >= minWeight || keywordsTotal-1 <= minKeywordsCount) stringToWord.put(keyword,customizedKeyWord)
+        if(newWeight < MinWeight && keywordsTotal-1 > MinKeywordsCount){
+          keywordsTotal = keywordsTotal - 1
+          keywordsToDelete.add(authorId)
+        }
+
+        for(keyword <- keywordsToDelete){
+          oldMap.remove(keyword)
+        }
+      }
+    }
+    oldMap
   }
 
   def autoDecRefreshArticleInterests(user:UserArticleTemp): UserArticleTemp ={
@@ -128,7 +313,7 @@ object CommonFuction {
     if(!user.latest_log_time.isEmpty && user.latest_log_time != "\"\"" && user.latest_log_time !="{}")
       times = intervalTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(user.latest_log_time),new Date())
 
-    for(i<- 0 to times.toInt - 1) baseAttenuationCoefficient *= baseAttenuationCoefficient
+    for(i<- 0 to times.toInt - 1) BaseAttenuationCoefficient *= BaseAttenuationCoefficient
 
     var newMap:CustomizedHashMap[String, Double] = new CustomizedHashMap[String, Double]
 
@@ -141,7 +326,7 @@ object CommonFuction {
 
       var value = map.get(key)
 
-      value = value * baseAttenuationCoefficient
+      value = value * BaseAttenuationCoefficient
 
       if(value < 0.01) keywordToDelete.add(key)
 
@@ -158,33 +343,52 @@ object CommonFuction {
 
   }
 
-  def getUserPortrait(user:UserTemp,newsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]],logTime:Broadcast[String]): UserTemp ={
-    val newsList: Array[Log_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
-    println("处理前的rateMap：" + user.prefListExtend.toString)
-    if (newsList.length >0) {
+  def getUserPortrait(user:UserTemp,logsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]],logTime:Broadcast[String]): UserTemp ={
+    val logsList: Array[Log_Temp] = logsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
+    //println("处理前的rateMap：" + user.prefListExtend.toString)
+    if (logsList.length >0) {
       //1.3. 根据用户画像和浏览历史更新各个用户的用户兴趣标签
-      for(news <- newsList){
-        var rateMap: CustomizedHashMap[String, Double] = user.prefListExtend.get(news.module_id)
-        println("原始rateMap：" + rateMap,news.map)
-        if(news.map !=null && news.map.size > 0 && rateMap == null){
-          rateMap = new CustomizedHashMap[String,Double]()
-          user.prefListExtend.put(news.module_id,rateMap)
+      for(logs <- logsList){
+        val moduleIds = logs.module_id.split(";")
+        for(moduleIdTemp<-moduleIds){
 
-          val keywordIte = news.map.keySet().iterator()
-          while(keywordIte.hasNext){
-            val name = keywordIte.next()
-            val score = news.map.get(name)
-            if(rateMap.containsKey(name))
-              rateMap.put(name, rateMap.get(name) + score)
-            else
-              rateMap.put(name, score)
+          //var moduleId = moduleIdTemp.substring(0,4)
+          var moduleId = moduleIdTemp
+          var rateMap: CustomizedHashMap[String, Double] = user.prefListExtend.get(moduleId)
+
+          //获取log的keywords列表
+          var logMap = new CustomizedHashMap[String,Double]()
+          if(!logs.keywords.isEmpty){
+            val keywordsTemp = logs.keywords.replaceAll("[< >]","").split("[\\, ; \\$]") //关键词中可能含有多个不同的分隔符
+            for(keyword <- keywordsTemp){
+              if(!logMap.containsKey(keyword) && !keyword.isEmpty) logMap.put(keyword,1)
+            }
+          }
+          //println("logMap：" + logMap)
+          if(logMap !=null && logMap.size > 0){
+            if(rateMap ==null) {
+              rateMap = new CustomizedHashMap[String,Double]()
+            }else{
+              user.prefListExtend.remove(moduleId)
+            }
+
+            user.prefListExtend.put(moduleId,rateMap)
+
+            val keywordIte = logMap.keySet().iterator()
+            while(keywordIte.hasNext){
+              val name = keywordIte.next()
+              val score = logMap.get(name)
+              if(rateMap.containsKey(name))
+                rateMap.put(name, rateMap.get(name) + score)
+              else
+                rateMap.put(name, score)
+            }
           }
         }
-
-        println("处理完的rateMap：" + user.prefListExtend.get(news.module_id))
+        //println("logMap：" + user.prefListExtend.get(logs.module_id))
       }
     }
-    println("处理后的rateMap：" + user.prefListExtend.toString)
+    //println("处理后的logMap：" + user.prefListExtend.toString)
 
     UserTemp(user.UserID,user.UserName,user.prefList,user.prefListExtend,logTime.value)
     //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
@@ -222,12 +426,69 @@ object CommonFuction {
     var result = new CustomizedHashMap[String, CustomizedHashMap[String, Double]]()
     try{
       //println(srcJson)
-      var map:CustomizedHashMap[String, CustomizedHashMap[String, Double]] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedHashMap[String, Double]]]() {})
-      var iterator = map.keySet.iterator()
-      while(iterator.hasNext){
-        var moduleId = iterator.next()
-        if(map.get(moduleId).toString != "{}")
-          result.put(moduleId,map.get(moduleId))
+      if(srcJson != "{}"){
+        var map:CustomizedHashMap[String, CustomizedHashMap[String, Double]] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedHashMap[String, Double]]]() {})
+        var iterator = map.keySet.iterator()
+        while(iterator.hasNext){
+          var moduleId = iterator.next()
+          if(map.get(moduleId).toString != "{}")
+            result.put(moduleId,map.get(moduleId))
+        }
+      }
+    }
+    catch {
+      case e: JsonParseException =>
+        e.printStackTrace()
+      case e: JsonMappingException =>
+        // TODO Auto-generated catch block
+        e.printStackTrace()
+      case e: IOException =>
+        e.printStackTrace()
+    }
+    return result
+  }
+
+  def jsonPrefListtoMapNew (srcJson: String): CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]] = {
+
+    if(objectMapper == null) {
+      objectMapper = new ObjectMapper
+    }
+    var result = new CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]]()
+    try{
+      //println(srcJson)
+      if(srcJson != "{}" && srcJson != ""){
+        var map:CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]]]() {})
+        var iterator = map.keySet.iterator()
+        while(iterator.hasNext){
+          var moduleId = iterator.next()
+          if(map.get(moduleId).toString != "{}")
+            result.put(moduleId,map.get(moduleId))
+        }
+      }
+    }
+    catch {
+      case e: JsonParseException =>
+        e.printStackTrace()
+      case e: JsonMappingException =>
+        // TODO Auto-generated catch block
+        e.printStackTrace()
+      case e: IOException =>
+        e.printStackTrace()
+    }
+    return result
+  }
+
+  def jsonConcernedSubjectListToMap(srcJson: String):CustomizedHashMap[String, CustomizedKeyWord] = {
+    if(objectMapper == null) {
+      objectMapper = new ObjectMapper
+    }
+    var result = new CustomizedHashMap[String, CustomizedKeyWord]()
+
+    try{
+      //println(srcJson)
+      if(srcJson != "{}" && srcJson != ""){
+        var map:CustomizedHashMap[String, CustomizedKeyWord] = objectMapper.readValue(srcJson, new TypeReference[CustomizedHashMap[String, CustomizedKeyWord]]() {})
+        result = map
       }
     }
     catch {
@@ -299,8 +560,8 @@ object CommonFuction {
 
   def formatUsers(line:String,logTime:Broadcast[String]):users={
     val tokens = line.split(SEP)
+    //println(tokens.size)
     if(tokens.size == 14){
-      //UserTemp(tokens(0).toLong,tokens(1),"{}",jsonPrefListtoMap("{}"),tokens(3))
       //println(tokens.length)
       var UserID = tokens(0).toInt
       var UserName = tokens(1)
@@ -316,8 +577,53 @@ object CommonFuction {
       var ProductviscosityInterests = if(tokens(11) == "\"\"" || tokens(11).isEmpty || tokens(11) == "{}") "{}" else tokens(11).substring(1,tokens(11).length-1).replace("\\","")
       var PurchaseIntentionInterests = if(tokens(12) == "\"\"" || tokens(12).isEmpty || tokens(12) == "{}") "{}" else tokens(12).substring(1,tokens(12).length-1).replace("\\","")
       users(UserID,UserName,LawOfworkAndRest,Area,Age,Gender,SingleArticleInterest,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,ProductviscosityInterests,PurchaseIntentionInterests,logTime.value)
+      //users(UserID,UserName,LawOfworkAndRest,LawOfworkAndRest,Age,Gender,"{}","{}","{}","{}","{}","{}","{}",logTime.value)
     }else{
       users(0,"","","",0,0,"","","","","","","",logTime.value)
+    }
+  }
+
+  def formatUsersNew(line:String,logTime:Broadcast[String]):usersNew={
+    val tokens = line.split(SEP)
+    //println(tokens.size)
+    if(tokens.size >= 14){
+      //println(tokens.length)
+      var UserID = 0
+      var UserName = tokens(0)
+      var LawOfworkAndRest = if(tokens(1) == "\"\"") "" else  tokens(1)
+      var Area = if(tokens(2) == "\"\"") "" else  tokens(2)
+      var Age = 0
+      var Gender = 0
+      var ConcernedSubject = if(tokens(5) == "\"\"" || tokens(5).isEmpty || tokens(5) == "{}") "{}" else tokens(5).substring(1,tokens(5).length-1).replace("\\","")
+      var SubConcernedSubject = if(tokens(6) == "\"\"" || tokens(6).isEmpty || tokens(6) == "{}") "{}" else tokens(6).substring(1,tokens(6).length-1).replace("\\","")
+      var SingleArticleTotalInterest = if(tokens(7) == "\"\"" || tokens(7).isEmpty || tokens(7) == "{}") "{}" else tokens(7).substring(1,tokens(7).length-1).replace("\\","")
+      var BooksInterests = ""
+      var SingleArticleRecentInterest  = if(tokens(8) == "\"\"" || tokens(8).isEmpty || tokens(8) == "{}") "{}" else tokens(8).substring(1,tokens(8).length-1).replace("\\","")
+      var TotalRelatedAuthor  = if(tokens(9) == "\"\"" || tokens(9).isEmpty || tokens(9) == "{}") "{}" else tokens(9).substring(1,tokens(9).length-1).replace("\\","")
+      var RecentRelatedAuthor  = if(tokens(10) == "\"\"" || tokens(10).isEmpty || tokens(10) == "{}") "{}" else tokens(10).substring(1,tokens(10).length-1).replace("\\","")
+      var JournalsInterests = ""
+      var ReferenceBookInterests = ""
+      var CustomerPurchasingPowerInterests = ""
+      var ProductviscosityInterests = ""
+      var PurchaseIntentionInterests = ""
+      usersNew(UserName,LawOfworkAndRest,Area,Age,Gender,ConcernedSubject,SubConcernedSubject,SingleArticleTotalInterest,SingleArticleRecentInterest,TotalRelatedAuthor,RecentRelatedAuthor,BooksInterests,JournalsInterests,ReferenceBookInterests,CustomerPurchasingPowerInterests,logTime.value)
+      //users(UserID,UserName,LawOfworkAndRest,LawOfworkAndRest,Age,Gender,"{}","{}","{}","{}","{}","{}","{}",logTime.value)
+    }else{
+      usersNew("","","",0,0,"","","","","","","","","","",logTime.value)
+    }
+  }
+
+  def formatRelatedLabel(line:String,logTime:Broadcast[String]):RelatedLabel={
+    val tokens = line.split(SEP)
+    if(tokens.size >= 3){
+      var UserName = tokens(0)
+
+      var TotalRelatedAuthor  = if(tokens(1) == "\"\"" || tokens(1).isEmpty || tokens(1) == "{}") "{}" else tokens(1).substring(1,tokens(1).length-1).replace("\\","")
+      var RecentRelatedAuthor  = if(tokens(2) == "\"\"" || tokens(2).isEmpty || tokens(2) == "{}") "{}" else tokens(2).substring(2,tokens(2).length-1).replace("\\","")
+      RelatedLabel(UserName,TotalRelatedAuthor,RecentRelatedAuthor)
+    }else{
+      //usersNew(0,"","","",0,0,"","","","","","","","","","","",logTime.value)
+      RelatedLabel("","","")
     }
   }
 
@@ -413,16 +719,41 @@ object CommonFuction {
 
     val map = jsonPrefListtoMap(tokens(4))
 
-    Log_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),map.get(tokens(3)))
+    Log_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),"",map.get(tokens(3)))
   }
 
   def formatUserLog(line:String):UserLogObj={
     val strings = line.split("\\d] ")
     var obj: UserLogObj = null
     if(strings.size == 2){
+      /*
+      * 暂时注释掉，日志中的json key值不确定，无法使用该方法，改用import com.alibaba.fastjson.JSON
       //导入隐式值
       implicit val formats = DefaultFormats
       obj  = parse(strings(1),false).extract[UserLogObj]
+      * */
+      val jSONObject = JSON.parseObject(strings(1))
+      obj = UserLogObj(
+        jSONObject.getOrDefault("vt","").toString
+        ,jSONObject.getOrDefault("un","").toString
+        ,jSONObject.getOrDefault("gki","").toString
+        ,jSONObject.getOrDefault("ac","").toString
+        ,jSONObject.getOrDefault("ro","").toString
+        ,jSONObject.getOrDefault("klc","").toString
+        ,jSONObject.getOrDefault("ri","").toString
+        ,jSONObject.getOrDefault("rkd","").toString
+        ,jSONObject.getOrDefault("sw","").toString
+        ,jSONObject.getOrDefault("p","").toString
+        ,jSONObject.getOrDefault("ci","").toString
+        ,jSONObject.getOrDefault("ua","").toString
+        ,jSONObject.getOrDefault("rcc","").toString
+        ,jSONObject.getOrDefault("rccc","").toString
+        ,jSONObject.getOrDefault("pfc","").toString
+        ,jSONObject.getOrDefault("dt","").toString
+        ,jSONObject.getOrDefault("di","").toString
+        ,jSONObject.getOrDefault("au","").toString
+        ,jSONObject.getOrDefault("jg","").toString
+        ,jSONObject.getOrDefault("sou","").toString)
     }else{
       println(line)
     }
@@ -491,6 +822,24 @@ object CommonFuction {
 
   }
 
+  def getNewUserListNew(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[usersNew]={
+
+    val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
+      row.getAs[String](0).replaceAll("[\\ \" ]","")
+    }).filter(!_.isEmpty).persist()
+
+    val newUserList = newsLogDataFrame.select("un").distinct().rdd.map(row => {
+      row.getAs[String](0).replaceAll("[\\ \" ]","")
+    }).filter(!_.isEmpty).subtract(userRDD).map(str => {
+      usersNew(str, "", "", 0, 0, "{}","{}","{}","{}", "{}", "{}","{}", "{}", "{}", "{}", logTime.value)
+    })
+    //userRDD.unpersist()
+
+    newUserList
+
+  }
+
+
   def getNewGuestUserList(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[users]={
 
     val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
@@ -507,4 +856,351 @@ object CommonFuction {
     newUserList
 
   }
+
+  def getArticleLogInterests(articleLogDataFrame:DataFrame): RDD[UserArticleTempNew] ={
+    //根据log获取用户标签
+    var userArticleTempNew = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var actionType = row.getAs[String]("ac")
+        var module_arr = row.getAs[String]("rcc").split(";")
+        var keywordTemp = row.getAs[String]("rkd").replaceAll("[< >]","").split("\\$\\$\\$")
+        val keywordArr = if(keywordTemp.length == 2) keywordTemp(1).split("[\\, ; \\$]") else if(keywordTemp.length == 1) keywordTemp(0).split("[\\, ; \\$]") else new Array[String](0) //关键词中可能含有多个不同的分隔符
+        val visitTime = row.getAs[String]("vt")
+        var newMap:CustomizedHashMap[String,CustomizedHashMap[String, CustomizedKeyWord]] = new CustomizedHashMap[String,CustomizedHashMap[String, CustomizedKeyWord]]
+
+        for(module_idTemp <- module_arr){
+          var module_id = module_idTemp.substring(0,4)
+          val stringToWord: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+
+          for(keyword<-keywordArr){
+            if(!keyword.isEmpty){
+              var keyWord = new CustomizedKeyWord(getWeight(actionType),visitTime)//记录关键词标签访问时间戳
+              stringToWord.put(keyword.toLowerCase,keyWord)
+            }
+          }
+          //当学科分类下的关键词不为空时才加入到用户喜欢分类中
+          if(stringToWord.size() > 0) newMap.put(module_id,stringToWord)
+        }
+        UserArticleTempNew(0,userName,newMap.toString,newMap,"")
+      })
+    userArticleTempNew
+  }
+
+  def getArticleLogInterestsNew(articleLogDataFrame:DataFrame): RDD[(String,UserArticleTempNew)] ={
+    //根据log获取用户标签
+    var userArticleTempNew = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var module_arr = row.getAs[String]("rcc").split(";")
+        var keywordTemp = row.getAs[String]("rkd").replaceAll("[< >]","").split("\\$\\$\\$")
+        val keywordArr = if(keywordTemp.length == 2) keywordTemp(1).split("[\\, ; \\$]") else if(keywordTemp.length == 1) keywordTemp(0).split("[\\, ; \\$]") else new Array[String](0) //关键词中可能含有多个不同的分隔符
+        val visitTime = row.getAs[String]("vt")
+        var newMap:CustomizedHashMap[String,CustomizedHashMap[String, CustomizedKeyWord]] = new CustomizedHashMap[String,CustomizedHashMap[String, CustomizedKeyWord]]
+
+        for(module_idTemp <- module_arr){
+          var module_id = module_idTemp.substring(0,4)
+          val stringToWord: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+
+          for(keyword<-keywordArr){
+            if(!keyword.isEmpty){
+              var keyWord = new CustomizedKeyWord(1D,visitTime)//记录关键词标签访问时间戳
+              stringToWord.put(keyword.toLowerCase,keyWord)
+            }
+          }
+          //当学科分类下的关键词不为空时才加入到用户喜欢分类中
+          if(stringToWord.size() > 0) newMap.put(module_id,stringToWord)
+        }
+        (userName,UserArticleTempNew(0,userName,newMap.toString,newMap,""))
+      })
+    userArticleTempNew
+  }
+
+  def getUserConceredSubjects(articleLogDataFrame:DataFrame,isSub:Boolean):RDD[UserConcernedSubjectTemp] = {
+    val articleLogList = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var actionType = row.getAs[String]("ac")
+        var module_Str = row.getAs[String]("rcc")
+        val visitTime = row.getAs[String]("vt")
+        var newMap: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+        val module_arr = module_Str.split("[\\, ;]")
+        for (moduleTemp <- module_arr) {
+          var module_id = if(!isSub) moduleTemp.substring(0, 4) else moduleTemp
+
+          var customizedKeyWord = new CustomizedKeyWord(getWeight(actionType),visitTime)
+
+          newMap.put(module_id, customizedKeyWord)
+        }
+        //println("newMap-------------------------"+FastJsonUtils.getBeanToJson(newMap))
+        UserConcernedSubjectTemp(0, userName, newMap.toString, newMap, "")
+      })
+    articleLogList
+  }
+
+  def getUserConceredSubjectsNew(articleLogDataFrame:DataFrame,isSub:Boolean):RDD[(String,UserConcernedSubjectTemp)] = {
+    val articleLogList = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var module_Str = row.getAs[String]("rcc")
+        val visitTime = row.getAs[String]("vt")
+        var newMap: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+        val module_arr = module_Str.split("[\\, ;]")
+        for (moduleTemp <- module_arr) {
+          var module_id = if(!isSub) moduleTemp.substring(0, 4) else moduleTemp
+
+          var customizedKeyWord = new CustomizedKeyWord(1D,visitTime)
+
+          newMap.put(module_id, customizedKeyWord)
+        }
+
+        (userName,UserConcernedSubjectTemp(0, userName, newMap.toString, newMap, ""))
+      })
+    articleLogList
+  }
+
+  def getRelatedAuthorFromLog(articleLogDataFrame:DataFrame):RDD[UserConcernedSubjectTemp] = {
+    val relatedAuthorFromLogList = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var actionType = row.getAs[String]("ac")
+        var author_Str = row.getAs[String]("au")
+        val visitTime = row.getAs[String]("vt")
+        var newMap: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+        var filter_author_arr = Array("整理","本报记者","通讯员")
+        val author_arr = author_Str.replaceAll("[\\r \\n]","").replaceAll("  ",";").split("[\\, ， ;]").filter(str=> !filter_author_arr.contains(str) && !str.isEmpty)
+        for (author <- author_arr) {
+          var customizedKeyWord = new CustomizedKeyWord(getWeight(actionType),visitTime)
+
+          newMap.put(author, customizedKeyWord)
+        }
+        UserConcernedSubjectTemp(0, userName, newMap.toString, newMap, "")
+      })
+    relatedAuthorFromLogList
+  }
+
+  def getRelatedAuthorFromLogNew(articleLogDataFrame:DataFrame):RDD[(String,UserConcernedSubjectTemp)] = {
+    val relatedAuthorFromLogList = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var author_Str = row.getAs[String]("au")
+        val visitTime = row.getAs[String]("vt")
+        var newMap: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+        var filter_author_arr = Array("整理","本报记者","通讯员")
+        val author_arr = author_Str.replaceAll("[\\r \\n]","").replaceAll("  ",";").split("[\\, ;]").filter(str=> !filter_author_arr.contains(str) && !str.isEmpty)
+        for (author <- author_arr) {
+          var customizedKeyWord = new CustomizedKeyWord(1D,visitTime)
+
+          newMap.put(author, customizedKeyWord)
+        }
+        (userName,UserConcernedSubjectTemp(0, userName, newMap.toString, newMap, ""))
+      })
+    relatedAuthorFromLogList
+  }
+
+  def unionOriginAndNewArticleLogInterests(originalSingleArticleInterestExtend:RDD[UserArticleTempNew],userArticleTempNew:RDD[UserArticleTempNew],isTotalOrRecent:Boolean,autoDecRefresh:Boolean):RDD[usersNew]={
+
+    //原始用户标签和新生成标签合并
+    originalSingleArticleInterestExtend.union(userArticleTempNew).groupBy(_.UserName).map(row=>{
+
+      var userName = row._1
+
+      var newMap:CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]] = new CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]]
+      val iterator = row._2.iterator
+      //每条数据以用户为单位
+      while (iterator.hasNext){
+
+        val userArticleTemp = iterator.next()
+        if(newMap.size() <= 0 && userArticleTemp.prefListExtend.size() > 0){
+          newMap = userArticleTemp.prefListExtend
+        }else{
+          val keyIterator = userArticleTemp.prefListExtend.keySet().iterator()
+          //每条数据以学科分类为单位
+          while (keyIterator.hasNext){
+            var key = keyIterator.next()
+            var value = userArticleTemp.prefListExtend.get(key)
+            if(newMap.containsKey(key)){
+              var oldMap: CustomizedHashMap[String, CustomizedKeyWord] = newMap.get(key)
+              //先删除旧的map
+              newMap.remove(key)
+              //如果画像信息中包含该学科
+              val iteratorKeywords = value.keySet().iterator()
+              while (iteratorKeywords.hasNext){
+
+                var keyword = iteratorKeywords.next()
+
+                var keyWordObj = new CustomizedKeyWord(1D,value.get(keyword).getDateTime)
+                if(oldMap.containsKey(keyword)){
+                  keyWordObj.setWeight(oldMap.get(keyword).getWeight + 1D)
+                  //只有当原始的关键词时间小于新的时间时才更新它
+                  if(keyWordObj.getDateTime.toDouble < oldMap.get(keyword).getDateTime.toDouble)  keyWordObj.setDateTime(oldMap.get(keyword).getDateTime)
+                  oldMap.remove(keyword)
+                }
+                oldMap.put(keyword,keyWordObj)
+              }
+              //增加更新好的map
+              oldMap = orderByHashMap(oldMap,autoDecRefresh)
+              newMap.put(key,oldMap)
+            }else{//如果不包含直接追加即可
+              value = orderByHashMap(value,autoDecRefresh)
+              newMap.put(key,value)
+            }
+          }
+        }
+      }
+      //FastJsonUtils.getBeanToJson(newMap)
+      //如果设置自动衰减，则执行衰减方法
+      if(!isTotalOrRecent){
+        //newMap = autoDecRefreshArticleRecentInterests(newMap)
+
+        usersNew(userName,"","",0,0,"","","",newMap.toString,"","","","","","","")
+      }else{
+        usersNew(userName,"","",0,0,"","",newMap.toString,"","","","","","","","")
+      }
+    })
+  }
+
+  def unionOriginAndNewArticleLogInterestsNew(originalSingleArticleInterestExtend:RDD[(String,UserArticleTempNew)],userArticleTempNew:RDD[(String,UserArticleTempNew)],isTotalOrRecent:Boolean,autoDecRefresh:Boolean):RDD[usersNew]={
+    //原始用户标签和新生成标签合并
+    val value = originalSingleArticleInterestExtend.union(userArticleTempNew).reduceByKey((r1, r2) => {
+      var userName = r1.UserName
+      var newMap: CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]] = r1.prefListExtend
+
+      val value = r2.prefListExtend.keySet().iterator()
+
+      while (value.hasNext) {
+        var module_id = value.next()
+        val stringToWord = r2.prefListExtend.get(module_id)
+        if (newMap.containsKey(module_id)) {
+          var oldMap: CustomizedHashMap[String, CustomizedKeyWord] = newMap.get(module_id)
+          val iteratorKeywords = stringToWord.keySet().iterator()
+          while (iteratorKeywords.hasNext) {
+
+            var keyword = iteratorKeywords.next()
+
+            var keyWordObj = stringToWord.get(keyword)
+            if (oldMap.containsKey(keyword)) {
+              val keyWordTemp = oldMap.get(keyword)
+              keyWordTemp.setWeight(keyWordTemp.getWeight + keyWordObj.getWeight)
+              //只有当原始的关键词时间小于新的时间时才更新它
+              if (keyWordTemp.getDateTime.toDouble < keyWordObj.getDateTime.toDouble) keyWordTemp.setDateTime(keyWordObj.getDateTime)
+              //oldMap.put(keyword,keyWordObj)
+            }else{
+              oldMap.put(keyword,stringToWord.get(keyword))
+            }
+          }
+        } else {
+          newMap.put(module_id, stringToWord)
+        }
+      }
+      UserArticleTempNew(0, UserName, "", newMap, "")
+    }).map(u=>{
+      if(!isTotalOrRecent){
+        //newMap = autoDecRefreshArticleRecentInterests(newMap)
+
+        usersNew(u._2.UserName,"","",0,0,"","","",u._2.prefListExtend.toString,"","","","","","","")
+      }else{
+        usersNew(u._2.UserName,"","",0,0,"","",u._2.prefListExtend.toString,"","","","","","","","")
+      }
+    })
+    value
+  }
+
+  def unionOriginAndNewUserConceredSubject(origin:RDD[UserConcernedSubjectTemp],newSubjects:RDD[UserConcernedSubjectTemp],Type:String,dateTime:Broadcast[String]):RDD[usersNew]={
+    origin.union(newSubjects).groupBy(_.UserName).map(row=>{
+      var userName = row._1
+      var newMap:CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+      val iterator = row._2.iterator
+      while(iterator.hasNext){
+        val userConcernedSubjectTemp = iterator.next()
+        if(userConcernedSubjectTemp.prefListExtend.size() >0){
+          if(newMap.size() <= 0){
+            newMap.putAll(userConcernedSubjectTemp.prefListExtend)
+          }else{
+            val keyIterator = userConcernedSubjectTemp.prefListExtend.keySet().iterator()
+            while(keyIterator.hasNext){
+              var key = keyIterator.next()
+              var value = userConcernedSubjectTemp.prefListExtend.get(key)
+              if(newMap.containsKey(key)){
+                var customizedKeyWord = newMap.get(key)
+                var newWeight = customizedKeyWord.getWeight + value.getWeight
+                customizedKeyWord.setWeight(newWeight)
+                if(customizedKeyWord.getDateTime < value.getDateTime) customizedKeyWord.setDateTime(value.getDateTime)
+              }else{
+                newMap.put(key,value)
+              }
+            }
+          }
+        }
+      }
+      Type match {
+        case "UserConceredSubject" => usersNew(userName,"","",0,0,orderByHashMap(newMap,true).toString,"","","","","","","","","",dateTime.value)
+        case "UserSubConceredSubject" => usersNew(userName,"","",0,0,"",orderByHashMap(newMap,true).toString,"","","","","","","","",dateTime.value)
+        case "TotalRelatedAuthor" => usersNew(userName,"","",0,0,"","","","",orderByHashMap(newMap,true).toString,"","","","","",dateTime.value)
+        case "RecentRelatedAuthor" => usersNew(userName,"","",0,0,"","","","","",orderByHashMap(newMap,true).toString,"","","","",dateTime.value)
+        case _ => usersNew(userName,"","",0,0,orderByHashMap(newMap,true).toString,"","","","","","","","","",dateTime.value)
+      }
+    })
+  }
+
+  def unionOriginAndNewUserConceredSubjectNew(origin:RDD[(String,UserConcernedSubjectTemp)],newSubjects:RDD[(String,UserConcernedSubjectTemp)],Type:String):RDD[usersNew]={
+    origin.union(newSubjects).reduceByKey((r1,r2)=>{
+      var userName = r1.UserName
+      var newMap:CustomizedHashMap[String, CustomizedKeyWord] = r1.prefListExtend
+
+      val iteratorKeywords = r2.prefListExtend.keySet().iterator()
+      while(iteratorKeywords.hasNext){
+        var keyword = iteratorKeywords.next()
+        val customizeKeyword = r2.prefListExtend.get(keyword)
+        if(newMap.containsKey(keyword)){
+          val oldMap = newMap.get(keyword)
+          oldMap.setWeight(oldMap.getWeight + customizeKeyword.getWeight)
+          if(oldMap.getDateTime.toDouble < customizeKeyword.getDateTime.toDouble) oldMap.setDateTime(customizeKeyword.getDateTime)
+        }else{
+          newMap.put(keyword,customizeKeyword)
+        }
+      }
+      UserConcernedSubjectTemp(0, UserName, "", newMap, "")
+    }).map(u=>{
+      Type match {
+        case "UserConceredSubject" => usersNew(u._2.UserName,"","",0,0,orderByHashMap(u._2.prefListExtend,true).toString,"","","","","","","","","","")
+        case "UserSubConceredSubject" => usersNew(u._2.UserName,"","",0,0,"",orderByHashMap(u._2.prefListExtend,true).toString,"","","","","","","","","")
+        case "TotalRelatedAuthor" => usersNew(u._2.UserName,"","",0,0,"","","","",orderByHashMap(u._2.prefListExtend,true).toString,"","","","","","")
+        case "RecentRelatedAuthor" => usersNew(u._2.UserName,"","",0,0,"","","","","",orderByHashMap(u._2.prefListExtend,true).toString,"","","","","")
+        case _ => usersNew(u._2.UserName,"","",0,0,orderByHashMap(u._2.prefListExtend,true).toString,"","","","","","","","","","")
+      }
+    })
+  }
+
+  def orderByHashMap(stringToWord:CustomizedHashMap[String,CustomizedKeyWord],descending:Boolean):CustomizedHashMap[String,CustomizedKeyWord]={
+    var newStringToWord:CustomizedHashMap[String,CustomizedKeyWord] = new CustomizedHashMap[String,CustomizedKeyWord]
+    if(stringToWord.size()>0){
+      val list = new ArrayList[util.Map.Entry[String, CustomizedKeyWord]](stringToWord.entrySet)
+
+      list.sort(new Comparator[Map.Entry[String, CustomizedKeyWord]] {
+        override def compare(o1: Map.Entry[String, CustomizedKeyWord], o2: Map.Entry[String, CustomizedKeyWord]): Int = {
+          if(o1 == null || o2 == null){
+            return 0
+          }
+          if(descending){
+            return o2.getValue.getWeight.compareTo(o1.getValue.getWeight)
+          }else{
+            return o1.getValue.getWeight.compareTo(o2.getValue.getWeight)
+          }
+        }
+      })
+      import scala.collection.JavaConversions._
+      for(i<-0 to list.length-1){
+        newStringToWord.put(list(i).getKey,list(i).getValue)
+      }
+    }
+    newStringToWord
+  }
+
 }

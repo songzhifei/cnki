@@ -23,17 +23,39 @@ UserAgent	useragent	ua
 移动设备ID	deviceid	di
 *
 * */
-  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,rkd:String,sw:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String)
+  //case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,rkd:String,sw:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String,au:String,jg:String,sou:String)
 
-
+  case class UserLogObj(vt:String,un:String,gki:String,ac:String,ro:String,klc:String,ri:String,rkd:String,sw:String,p:String,ci:String,ua:String,rcc:String,rccc:String,pfc:String,dt:String,di:String,au:String,jg:String,sou:String)
 
   case class UserTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, Double]],latest_log_time:String)
 
+  case class UserTempNew(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]],latest_log_time:String)
+
+  case class UserConcernedSubjectTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, CustomizedKeyWord],latest_log_time:String)
+
+  case class TotalArticleTemp(UserName:String, SingleArticleTotalInterest:String)
+
+  case class RecentArticleTemp(UserName:String, SingleArticleRecentInterest:String)
+
+  case class ConcernedSubjectTemp(UserName:String, ConcenedSubject:String)
+
+  case class TotalRelatedAuthorTemp(UserName:String, TotalRelatedAuthor:String)
+
+  case class RecentRelatedAuthorTemp(UserName:String, RecentRelatedAuthor:String)
+
+  case class UserInterestTemp(UserName:String, prefList:String)
+
   case class UserArticleTemp(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String, Double],latest_log_time:String)
 
-  case class Log_Temp(username:String,view_time:String,title:String,content:String,module_id:String,map:CustomizedHashMap[String, Double])
+  case class UserArticleTempNew(UserID:BigInt,UserName:String, prefList:String,prefListExtend:CustomizedHashMap[String,CustomizedHashMap[String, CustomizedKeyWord]],latest_log_time:String)
+
+  case class Log_Temp(username:String,view_time:String,title:String,content:String,module_id:String,keywords:String,map:CustomizedHashMap[String, Double])
 
   case class users(UserID:BigInt,UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,ProductviscosityInterests:String,PurchaseIntentionInterests:String,latest_log_time:String)
+
+  case class usersNew(UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,ConcenedSubject:String,SubConcenedSubject:String,SingleArticleTotalInterest:String,SingleArticleRecentInterest:String,TotalRelatedAuthor:String,RecentRelatedAuthor:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,latest_log_time:String)
+
+  case class RelatedLabel(UserName:String,TotalRelatedAuthor:String,RecentRelatedAuthor:String)
 
   case class UserPortrait(UserID:BigInt,UserName:String,LawOfworkAndRest:Int,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String)
 

@@ -1,6 +1,8 @@
-import CommonFuction.{SEP, filterLog, formatUserLog, getYesterday}
-import CommonObj.users
+import CommonFuction._
+import CommonObj.{Log_Temp, users}
 import org.apache.spark.sql.{SaveMode, SparkSession}
+
+import scala.collection.mutable.ArrayBuffer
 
 object test_func {
   def main(args: Array[String]): Unit = {
@@ -12,11 +14,25 @@ object test_func {
 
     //val logObject = spark.sparkContext.textFile("E:/test/recommend-system/journal/userlog/2019-06-30/").map(formatUserLog).filter(filterLog)
 
-    val logObject = spark.read.textFile("E:/test/recommend-system/journal/userlog/2019-06-30/").rdd.map(formatUserLog).filter(filterLog)
+    val logTime = spark.sparkContext.broadcast(getNowStr())
+    //1.1. 获取用户画像数据（格式化用户兴趣标签数据）getYesterday() +
+    var userList = spark.read.textFile(args(0)).rdd.map(line=>formatUsers(line,logTime)).filter(user=> !user.UserName.isEmpty)
 
+    //此处需要添加对一些基本的不符合条件的日志过滤掉
+    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un is not null and un != '' and ac = 'browse' and rcc !=''")
 
-    logObject.toDF().show(100)
+    newsLogDataFrame.cache()
 
+    println("----------------------------------------------------------"+userList.toDF().count())
+
+    //1.2通过日志更新新的用户信息
+    val newUserList = getNewUserList(userList.toDF(),newsLogDataFrame,logTime)
+
+    userList = userList.union(newUserList)
+
+    var userDataFrame = userList.toDF()
+
+    println("----------------------------------------------------------"+userDataFrame.count())
 
     //println(value.rdd.map(row=>row.getAs[String]("un")).groupBy(x=>x).count())
 
