@@ -13,6 +13,7 @@
     <properties>
         <mysql-connector>5.1.39</mysql-connector>
         <spark-version>2.1.0</spark-version>
+        <hbase-version>1.2.0</hbase-version>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-core -->
@@ -32,6 +33,21 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-mllib_2.11</artifactId>
             <version>${spark-version}</version>
+        </dependency><!-- https://mvnrepository.com/artifact/org.apache.hbase/hbase-client -->
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-client</artifactId>
+            <version>${hbase-version}</version>
+        </dependency><!-- https://mvnrepository.com/artifact/org.apache.hbase/hbase-server -->
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-server</artifactId>
+            <version>${hbase-version}</version>
+        </dependency><!-- https://mvnrepository.com/artifact/org.apache.hbase/hbase-common -->
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-common</artifactId>
+            <version>${hbase-version}</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.jfinal/jfinal -->
         <dependency>

@@ -2,7 +2,7 @@
 import java.io.IOException
 
 import CommonFuction._
-import CommonObj.{UserArticleTempNew, UserConcernedSubjectTemp, usersNew}
+import CommonObj.{UserArticleTempNew, UserConcernedSubjectTemp, usersNew, usersToMysql}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 object UserPortraitToMysql {
@@ -23,26 +23,35 @@ object UserPortraitToMysql {
     var size = if(args.length >=3) args(2).toInt else 3
     println("-------------------当前处理的的用户画像地址："+args(0)+",保存地址："+args(1)+"size大小："+size+"--------------------")
     //1.1. 获取用户画像数据（格式化用户兴趣标签数据）getYesterday() +
-    //var userList = spark.read.textFile(args(0)).rdd.map(line=>formatUsersNew(line,logTime)).filter(user=> !user.UserName.isEmpty)
     val userDataFrameOld = spark.read.parquet(args(0)).where("UserName != ''")
 
     var userDataFrame = userDataFrameOld.rdd.map(row=>{
-      usersNew(
+      var hasPortrait = 1
+      val ConcenedSubject = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("ConcenedSubject")),size)
+      val SubConcenedSubject = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("SubConcenedSubject")),size)
+      val SingleArticleTotalInterest = getNewArticleHashMap(jsonPrefListtoMapNew(row.getAs[String]("SingleArticleTotalInterest")),size)
+      val SingleArticleRecentInterest = getNewArticleHashMap(jsonPrefListtoMapNew(row.getAs[String]("SingleArticleRecentInterest")),size)
+      val TotalRelatedAuthor = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("TotalRelatedAuthor")),size)
+      val RecentRelatedAuthor = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("RecentRelatedAuthor")),size)
+      if(ConcenedSubject.equals("{}") && SubConcenedSubject.equals("{}") && SingleArticleTotalInterest.equals("{}")  && SingleArticleRecentInterest.equals("{}") && TotalRelatedAuthor.equals("{}") && RecentRelatedAuthor.equals("{}")) hasPortrait = 0
+
+      usersToMysql(
         row.getAs("UserName")
         ,""
         ,""
         ,0
         ,0
-        ,getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("ConcenedSubject")),size)
-        ,getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("SubConcenedSubject")),size)
-        ,getNewArticleHashMap(jsonPrefListtoMapNew(row.getAs[String]("SingleArticleTotalInterest")),size)
-        ,getNewArticleHashMap(jsonPrefListtoMapNew(row.getAs[String]("SingleArticleRecentInterest")),size)
-        ,getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("TotalRelatedAuthor")),size)
-        ,getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("RecentRelatedAuthor")),size)
+        ,ConcenedSubject
+        ,SubConcenedSubject
+        ,SingleArticleTotalInterest
+        ,SingleArticleRecentInterest
+        ,TotalRelatedAuthor
+        ,RecentRelatedAuthor
         ,""
         ,""
         ,""
         ,""
+        ,hasPortrait
         ,row.getAs[String]("latest_log_time"))
     }).toDF()
 /*

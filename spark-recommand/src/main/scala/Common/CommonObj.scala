@@ -55,6 +55,8 @@ UserAgent	useragent	ua
 
   case class usersNew(UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,ConcenedSubject:String,SubConcenedSubject:String,SingleArticleTotalInterest:String,SingleArticleRecentInterest:String,TotalRelatedAuthor:String,RecentRelatedAuthor:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,latest_log_time:String)
 
+  case class usersToMysql(UserName:String,LawOfworkAndRest:String,Area:String,Age:Int,Gender:Int,ConcenedSubject:String,SubConcenedSubject:String,SingleArticleTotalInterest:String,SingleArticleRecentInterest:String,TotalRelatedAuthor:String,RecentRelatedAuthor:String,BooksInterests:String,JournalsInterests:String,ReferenceBookInterests:String,CustomerPurchasingPowerInterests:String,hasPortrait:Int,latest_log_time:String)
+
   case class RelatedLabel(UserName:String,TotalRelatedAuthor:String,RecentRelatedAuthor:String)
 
   case class UserPortrait(UserID:BigInt,UserName:String,LawOfworkAndRest:Int,Area:String,Age:Int,Gender:Int,SingleArticleInterest:String)
