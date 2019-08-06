@@ -6,6 +6,9 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.sql.SparkSession
 
+/**
+  * 用户日志保存到hbase demo app
+  */
 object SaveToHbase {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession

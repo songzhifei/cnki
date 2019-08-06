@@ -3,6 +3,9 @@ import CommonObj._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
+/**
+  * 根据用户信息初始化用户画像（无用）
+  */
 object initUserPortrait {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.master("local[*]").appName("initUserPortrait").getOrCreate

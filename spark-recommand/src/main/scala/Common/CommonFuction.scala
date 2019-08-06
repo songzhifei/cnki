@@ -18,20 +18,39 @@ import com.alibaba.fastjson.JSON
   *
   * 公用方法类
   *
-  * */
+  */
 object CommonFuction {
 
 
+  /**
+    * json string反序列化为对象
+    */
   var objectMapper:ObjectMapper = null
 
+  /*
+  * 分隔符
+  */
   var SEP = "&"
 
+  /**
+    * 权重最小值
+    */
   var MinWeight = 0.01
-
+  /**
+    * 关键词最小数量
+    */
   var MinKeywordsCount = 10
 
+  /*
+  *
+  * 默认衰减系数
+   */
   var BaseAttenuationCoefficient = 0.9
 
+  /**
+    * 日志需过滤的的爬虫标识
+    *
+    */
   var spiderArray = Array(
     "spider",
     "+Galaxy+Nexus+Build/ICL53F)+",
@@ -73,14 +92,30 @@ object CommonFuction {
     "SEMrushBot"
   )
 
+  /**
+    *
+    * mysql URL
+    */
   var MysqlURL = ""
 
+  /**
+    * mysql 用户名
+    */
   var UserName = "root"
 
+  /**
+    * mysql 密码
+    */
   var Password = "root"
 
+  /**
+    * mysql dataTable
+    */
   var DataTable = "huge.cnki_user_portrait"
 
+  /**
+    * 获取配置文件的相应属性
+    */
   def getProperty(): Unit ={
     var props = new Properties()
     props.load(new FileInputStream("property.yml"))
@@ -100,6 +135,11 @@ object CommonFuction {
       DataTable = props.getProperty("DataTable")
   }
 
+  /**
+    * 根据actiontype获取相应的权重
+    * @param str
+    * @return
+    */
   def getWeight(str:String):Double={
     var result = 1D
     str match {
@@ -109,11 +149,17 @@ object CommonFuction {
       case "collect" => result = 1D
       case "concern" => result = 1D
       case "comment" => result = 1D
+      case "search" => result = 1D
       case _ => result = 1L
     }
     result
   }
 
+  /**
+    * 按照默认衰减系数衰减算法(guestmain中引用)
+    * @param user
+    * @return
+    */
   def autoDecRefresh(user:UserTemp): UserTemp ={
 
     //用于删除喜好值过低的关键词
@@ -160,6 +206,11 @@ object CommonFuction {
     UserTemp(user.UserID,user.UserName,user.prefList,newMap,user.latest_log_time)
   }
 
+  /**
+    * 用户最近关注的文章按照牛顿衰减算法衰减方法
+    * @param oldMap
+    * @return
+    */
   def autoDecRefreshArticleRecentInterests(oldMap:CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]]): CustomizedHashMap[String, CustomizedHashMap[String,CustomizedKeyWord]] ={
     import scala.collection.JavaConversions._
     var moduleId = ""
@@ -245,6 +296,11 @@ object CommonFuction {
     oldMap
   }
 
+  /**
+    * 用户关注的作者按照牛顿衰减算法衰减方法
+    * @param oldMap
+    * @return
+    */
   def autoDecRefreshAuthorRecentInterests(oldMap:CustomizedHashMap[String, CustomizedKeyWord]): CustomizedHashMap[String, CustomizedKeyWord] ={
     import scala.collection.JavaConversions._
     var authorId = ""
@@ -299,6 +355,11 @@ object CommonFuction {
     oldMap
   }
 
+  /**
+    * 文章按照默认衰减系数衰减(guestmain中引用)
+    * @param user
+    * @return
+    */
   def autoDecRefreshArticleInterests(user:UserArticleTemp): UserArticleTemp ={
 
     //用于删除喜好值过低的关键词
@@ -343,6 +404,14 @@ object CommonFuction {
 
   }
 
+
+  /**
+    * 根据日志 + 历史用户画像 = 生成最新用户画像
+    * @param user
+    * @param logsBroadCast
+    * @param logTime
+    * @return
+    */
   def getUserPortrait(user:UserTemp,logsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]],logTime:Broadcast[String]): UserTemp ={
     val logsList: Array[Log_Temp] = logsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
     //println("处理前的rateMap：" + user.prefListExtend.toString)
@@ -394,6 +463,12 @@ object CommonFuction {
     //users(user.id.toInt,user.username,"","",0,0,"","",user.prefListExtend.toString,"","","","",logTime.value)
   }
 
+  /**
+    * 根据用户文章行为日志 + 历史画像 = 最新画像
+    * @param user
+    * @param newsBroadCast
+    * @return
+    */
   def getUserArticlePortrait(user:UserArticleTemp,newsBroadCast:Broadcast[collection.Map[String, Array[Log_Temp]]]):users={
     val newsList: Array[Log_Temp] = newsBroadCast.value.get(user.UserName).getOrElse(new Array[Log_Temp](0))
 
@@ -418,6 +493,11 @@ object CommonFuction {
     users(user.UserID,user.UserName,"","",0,0,user.prefListExtend.toString,"","","","","","","")
   }
 
+  /**
+    * jsonstring格式反序列化为对象CustomizedHashMap[String, CustomizedHashMap[String, Double] （已弃用）
+    * @param srcJson
+    * @return
+    */
   def jsonPrefListtoMap (srcJson: String): CustomizedHashMap[String, CustomizedHashMap[String, Double]] = {
 
     if(objectMapper == null) {
@@ -448,6 +528,11 @@ object CommonFuction {
     return result
   }
 
+  /**
+    * jsonstring格式反序列化为对象CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord] 最新
+    * @param srcJson
+    * @return
+    */
   def jsonPrefListtoMapNew (srcJson: String): CustomizedHashMap[String, CustomizedHashMap[String, CustomizedKeyWord]] = {
 
     if(objectMapper == null) {
@@ -478,6 +563,11 @@ object CommonFuction {
     return result
   }
 
+  /**
+    * jsonstring反序列化为CustomizedHashMap[String, CustomizedKeyWord] 最新
+    * @param srcJson
+    * @return
+    */
   def jsonConcernedSubjectListToMap(srcJson: String):CustomizedHashMap[String, CustomizedKeyWord] = {
     if(objectMapper == null) {
       objectMapper = new ObjectMapper
@@ -503,6 +593,11 @@ object CommonFuction {
     return result
   }
 
+  /**
+    * jsonstring反序列化为CustomizedHashMap[String, Double]（guest main中引用）
+    * @param srcJson
+    * @return
+    */
   def jsonArticlePrefListtoMap(srcJson: String):CustomizedHashMap[String, Double] = {
     if(objectMapper == null) {
       objectMapper = new ObjectMapper
@@ -527,18 +622,24 @@ object CommonFuction {
     return result
   }
 
-  def jsonLoglisttoLogMap(srcJSON:String):CustomizedHashMap[String, String]={
-    if(objectMapper == null) objectMapper = new ObjectMapper
-    var map: CustomizedHashMap[String, String] = objectMapper.readValue(srcJSON,new TypeReference[CustomizedHashMap[String, String]] {})
-    map
-  }
-
+  /**
+    * 计算两个时间之间的相间隔天数
+    * @param startDate
+    * @param endDate
+    * @return
+    */
   def intervalTime(startDate:Date,endDate:Date): Long ={
     var between = endDate.getTime - startDate.getTime
     val day: Long = between / 1000 / 3600 / 24
     day
   }
 
+  /**
+    *基于内容的推荐（从用户的喜爱列表中寻找待推荐列表中与之匹配的推荐数据，暂时不用）
+    * @param map
+    * @param list
+    * @return
+    */
   def getMatchValue(map:CustomizedHashMap[String, Double],list:CustomizedHashMap[String, Double]): Double ={
 
     var matchValue = 0D
@@ -550,14 +651,30 @@ object CommonFuction {
     matchValue
   }
 
+  /**
+    * 过滤掉关键词比重小于等于0的数据
+    * @param arr
+    */
   def removeZeroItem(arr: ArrayBuffer[(Long, Double)]): Unit ={
     arr.filter(tuple=>tuple._2>0)
   }
 
+  /**
+    * 自定义二维tuple比较大小方法
+    * @param t1
+    * @param t2
+    * @return
+    */
   def compare(t1:(BigInt,String,Long,String,Double),t2:(BigInt,String,Long,String,Double)): Boolean ={
     t1._5.compareTo(t2._5) > 0
   }
 
+  /**
+    * 格式化用户画像数据（已弃用）
+    * @param line
+    * @param logTime
+    * @return
+    */
   def formatUsers(line:String,logTime:Broadcast[String]):users={
     val tokens = line.split(SEP)
     //println(tokens.size)
@@ -583,6 +700,12 @@ object CommonFuction {
     }
   }
 
+  /**
+    * 格式化用户画像方法（最新）
+    * @param line
+    * @param logTime
+    * @return
+    */
   def formatUsersNew(line:String,logTime:Broadcast[String]):usersNew={
     val tokens = line.split(SEP)
     //println(tokens.size)
@@ -613,6 +736,12 @@ object CommonFuction {
     }
   }
 
+  /**
+    * 格式化用户相关的标签（已弃用）
+    * @param line
+    * @param logTime
+    * @return
+    */
   def formatRelatedLabel(line:String,logTime:Broadcast[String]):RelatedLabel={
     val tokens = line.split(SEP)
     if(tokens.size >= 3){
@@ -627,6 +756,11 @@ object CommonFuction {
     }
   }
 
+  /**
+    * 基于内容进行的推荐，暂时无用
+    * @param line
+    * @return
+    */
   def formatNews(line:String): NewsTemp ={
 
     val tokens = line.split(SEP)
@@ -654,74 +788,11 @@ object CommonFuction {
     NewsTemp(tokens(0).toLong, "", tokens(6), title, tokens(5),map)
   }
 
-  def formatJournalBaseInfo(line:String): JournalBaseTemp ={
-
-    val tokens = line.split(SEP)
-
-    var title = tokens(2)
-    var content = ""
-
-    var jsonStr = tokens(8).substring(1,tokens(8).length-1).replace("\\","")
-    var map:CustomizedHashMap[String,Double] = jsonPrefListtoMap(jsonStr).get(tokens(6))
-
-    /**/
-    if(map == null){
-
-      val keywords = TFIDFNEW.getTFIDE(title, 10).iterator()
-
-      map = new CustomizedHashMap[String,Double]()
-
-      while (keywords.hasNext) {
-        var keyword = keywords.next()
-        val name = keyword.getName
-        val score = keyword.getTfidfvalue
-        map.put(name,score)
-      }
-    }
-    JournalBaseTemp(tokens(0).toLong,tokens(1), "", tokens(7), title, tokens(6),jsonStr)
-  }
-
-  def formatRecommandTuple(user:UserTemp,newsBroadCast:Broadcast[Array[NewsTemp]]): ArrayBuffer[(BigInt,String, Long,String, Double)] ={
-    var tempMatchArr = new ArrayBuffer[(BigInt,String, Long,String, Double)]()
-    var ite = newsBroadCast.value.iterator
-    while (ite.hasNext) {
-      val news = ite.next
-      val newsId = news.id
-      val moduleId = news.module_id
-
-      var map = user.prefListExtend.get(moduleId)
-
-      if (null != map) {
-        val tuple: (BigInt,String, Long,String, Double) = (user.UserID,user.UserName, newsId,news.title, getMatchValue(map, news.keywords))
-        tempMatchArr += tuple
-      }
-    }
-    // 去除匹配值为0的项目,并排序
-    var sortedTuples: ArrayBuffer[(BigInt,String, Long,String, Double)] = tempMatchArr.filter(tuple => tuple._5 > 0).sortWith(compare)
-
-    if (sortedTuples.length > 0) {
-      //暂时不操作
-      //过滤掉已经推荐过的新闻
-      //RecommendKit.filterReccedNews(toBeRecommended, user.id)
-      //过滤掉用户已经看过的新闻
-      //RecommendKit.filterBrowsedNews(toBeRecommended, user.id)
-      //如果可推荐新闻数目超过了系统默认为CB算法设置的单日推荐上限数（N），则去掉一部分多余的可推荐新闻，剩下的N个新闻才进行推荐
-    }
-    if (sortedTuples.length > 10)
-      sortedTuples = sortedTuples.take(10)
-    sortedTuples
-  }
-
-  def formatUserViewLogs(line:String): Log_Temp ={
-    val tokens = line.split("::")
-
-    //val date1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(tokens(1))
-
-    val map = jsonPrefListtoMap(tokens(4))
-
-    Log_Temp(tokens(0),tokens(1),tokens(2),"",tokens(3),"",map.get(tokens(3)))
-  }
-
+  /**
+    * 格式化用户日志jsonstring 为 UserLogObj
+    * @param line
+    * @return
+    */
   def formatUserLog(line:String):UserLogObj={
     val strings = line.split("\\d] ")
     var obj: UserLogObj = null
@@ -760,39 +831,39 @@ object CommonFuction {
     obj
   }
 
-  def formateBookInfo(line:String):BookBaseInfo={
-    val strings = line.split(SEP)
-    if(strings.size == 5){
-      BookBaseInfo(strings(0),strings(1),strings(2),strings(3),strings(4).replace("\\",""))
-    }else{
-      BookBaseInfo("","","","","")
-    }
-  }
-
+  /**
+    * 获取当前时间，格式：yyyy-MM-dd HH:mm:ss
+    * @return
+    */
   def getNowStr():String={
     var now =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
     now
   }
 
+  /**
+    * 获取今天日期，格式：yyyy-MM-dd
+    * @return
+    */
   def getToday():String={
     var today = new SimpleDateFormat("yyyy-MM-dd").format(new Date())
     today
   }
 
+  /**
+    * 获取昨天日期，格式：yyyy-MM-dd
+    * @return
+    */
   def getYesterday():String={
     var today = new Date()
     var yesterday = new SimpleDateFormat("yyyy-MM-dd").format( today.getTime -  86400000L)
     yesterday
   }
 
-  def recommand(userList:RDD[UserTemp],newsBroadCast:Broadcast[Array[NewsTemp]]): RDD[recommendations] ={
-
-    val recommandRDD: RDD[recommendations] = userList.map(user => formatRecommandTuple(user, newsBroadCast)).flatMap(_.toList).map(tuple => {
-      recommendations(tuple._1, tuple._2, tuple._3, tuple._4, tuple._5)
-    })
-    recommandRDD
-  }
-
+  /**
+    * 用户日志过滤不符合规则的内容
+    * @param logObj
+    * @return
+    */
   def filterLog(logObj: UserLogObj):Boolean ={
       var res = true
       import scala.util.control.Breaks._
@@ -805,6 +876,13 @@ object CommonFuction {
     res
   }
 
+  /**
+    * 根据日志获取最新的用户信息（由于用户信息表数据不全，日志里可能存在新增用户，所以需要从日志中提取一遍新用户）已弃用
+    * @param userDataFrame
+    * @param newsLogDataFrame
+    * @param logTime
+    * @return
+    */
   def getNewUserList(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[users]={
 
     val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
@@ -822,6 +900,13 @@ object CommonFuction {
 
   }
 
+  /**
+    * 根据日志获取最新的用户信息（由于用户信息表数据不全，日志里可能存在新增用户，所以需要从日志中提取一遍新用户）最新
+    * @param userDataFrame
+    * @param newsLogDataFrame
+    * @param logTime
+    * @return
+    */
   def getNewUserListNew(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[usersNew]={
 
     val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
@@ -839,7 +924,13 @@ object CommonFuction {
 
   }
 
-
+  /**
+    * 根据日志获取最新的匿名用户（原因如上）
+    * @param userDataFrame
+    * @param newsLogDataFrame
+    * @param logTime
+    * @return
+    */
   def getNewGuestUserList(userDataFrame:DataFrame,newsLogDataFrame:DataFrame,logTime:Broadcast[String]):RDD[users]={
 
     val userRDD = userDataFrame.select("UserName").rdd.map(row=>{
@@ -857,6 +948,11 @@ object CommonFuction {
 
   }
 
+  /**
+    * 根据文章行为日志生成用户日志画像（已弃用）
+    * @param articleLogDataFrame
+    * @return
+    */
   def getArticleLogInterests(articleLogDataFrame:DataFrame): RDD[UserArticleTempNew] ={
     //根据log获取用户标签
     var userArticleTempNew = articleLogDataFrame
@@ -888,6 +984,11 @@ object CommonFuction {
     userArticleTempNew
   }
 
+  /**
+    * 根据文章行为日志生成用户日志画像（最新）
+    * @param articleLogDataFrame
+    * @return
+    */
   def getArticleLogInterestsNew(articleLogDataFrame:DataFrame): RDD[(String,UserArticleTempNew)] ={
     //根据log获取用户标签
     var userArticleTempNew = articleLogDataFrame
@@ -918,6 +1019,12 @@ object CommonFuction {
     userArticleTempNew
   }
 
+  /**
+    * 根据文章行为日志生成 用户关注的学科维度的画像（已弃用）
+    * @param articleLogDataFrame
+    * @param isSub
+    * @return
+    */
   def getUserConceredSubjects(articleLogDataFrame:DataFrame,isSub:Boolean):RDD[UserConcernedSubjectTemp] = {
     val articleLogList = articleLogDataFrame
       .rdd
@@ -941,6 +1048,12 @@ object CommonFuction {
     articleLogList
   }
 
+  /**
+    * 根据文章行为日志生成 用户关注的学科维度的画像（最新）
+    * @param articleLogDataFrame
+    * @param isSub
+    * @return
+    */
   def getUserConceredSubjectsNew(articleLogDataFrame:DataFrame,isSub:Boolean):RDD[(String,UserConcernedSubjectTemp)] = {
     val articleLogList = articleLogDataFrame
       .rdd
@@ -962,7 +1075,9 @@ object CommonFuction {
       })
     articleLogList
   }
-
+  /*
+  * 根据日志生成相关作者的dataFrame
+  */
   def getRelatedAuthorFromLog(articleLogDataFrame:DataFrame):RDD[UserConcernedSubjectTemp] = {
     val relatedAuthorFromLogList = articleLogDataFrame
       .rdd
@@ -984,6 +1099,31 @@ object CommonFuction {
     relatedAuthorFromLogList
   }
 
+  /*
+  * 根据日志生成搜索关键词的dataFrame
+  * */
+  def getSearchKeyWordFromLog(articleLogDataFrame:DataFrame):RDD[UserConcernedSubjectTemp] = {
+    val searchKeyWordFromLog = articleLogDataFrame
+      .rdd
+      .map(row => {
+        var userName = row.getAs[String]("un")
+        var actionType = row.getAs[String]("ac")
+        var searchKeyword = row.getAs[String]("sw")
+        val visitTime = row.getAs[String]("vt")
+        var newMap: CustomizedHashMap[String, CustomizedKeyWord] = new CustomizedHashMap[String, CustomizedKeyWord]
+        var customizedKeyWord = new CustomizedKeyWord(getWeight(actionType),visitTime)
+
+        newMap.put(searchKeyword, customizedKeyWord)
+        UserConcernedSubjectTemp(0, userName, newMap.toString, newMap, "")
+      })
+    searchKeyWordFromLog
+  }
+
+  /**
+    * 根据文章行为日志生成用户相关作者维度画像（最新）
+    * @param articleLogDataFrame
+    * @return
+    */
   def getRelatedAuthorFromLogNew(articleLogDataFrame:DataFrame):RDD[(String,UserConcernedSubjectTemp)] = {
     val relatedAuthorFromLogList = articleLogDataFrame
       .rdd
@@ -1004,6 +1144,14 @@ object CommonFuction {
     relatedAuthorFromLogList
   }
 
+  /**
+    * 用户文章维度 旧画像+ 根据日志生成的画像 = 最新用户画像 （已弃用）
+    * @param originalSingleArticleInterestExtend
+    * @param userArticleTempNew
+    * @param isTotalOrRecent
+    * @param autoDecRefresh
+    * @return
+    */
   def unionOriginAndNewArticleLogInterests(originalSingleArticleInterestExtend:RDD[UserArticleTempNew],userArticleTempNew:RDD[UserArticleTempNew],isTotalOrRecent:Boolean,autoDecRefresh:Boolean):RDD[usersNew]={
 
     //原始用户标签和新生成标签合并
@@ -1066,6 +1214,14 @@ object CommonFuction {
     })
   }
 
+  /**
+    * 用户文章维度 旧画像+ 根据日志生成的画像 = 最新用户画像 （最新）
+    * @param originalSingleArticleInterestExtend
+    * @param userArticleTempNew
+    * @param isTotalOrRecent
+    * @param autoDecRefresh
+    * @return
+    */
   def unionOriginAndNewArticleLogInterestsNew(originalSingleArticleInterestExtend:RDD[(String,UserArticleTempNew)],userArticleTempNew:RDD[(String,UserArticleTempNew)],isTotalOrRecent:Boolean,autoDecRefresh:Boolean):RDD[usersNew]={
     //原始用户标签和新生成标签合并
     val value = originalSingleArticleInterestExtend.union(userArticleTempNew).reduceByKey((r1, r2) => {
@@ -1112,6 +1268,14 @@ object CommonFuction {
     value
   }
 
+  /**
+    * 用户关注学科 旧画像+ 根据日志生成的画像 = 最新用户画像 （已弃用）
+    * @param origin
+    * @param newSubjects
+    * @param Type
+    * @param dateTime
+    * @return
+    */
   def unionOriginAndNewUserConceredSubject(origin:RDD[UserConcernedSubjectTemp],newSubjects:RDD[UserConcernedSubjectTemp],Type:String,dateTime:Broadcast[String]):RDD[usersNew]={
     origin.union(newSubjects).groupBy(_.UserName).map(row=>{
       var userName = row._1
@@ -1144,11 +1308,19 @@ object CommonFuction {
         case "UserSubConceredSubject" => usersNew(userName,"","",0,0,"",orderByHashMap(newMap,true).toString,"","","","","","","","",dateTime.value)
         case "TotalRelatedAuthor" => usersNew(userName,"","",0,0,"","","","",orderByHashMap(newMap,true).toString,"","","","","",dateTime.value)
         case "RecentRelatedAuthor" => usersNew(userName,"","",0,0,"","","","","",orderByHashMap(newMap,true).toString,"","","","",dateTime.value)
+        case "SearchKeyword" => usersNew(userName,"","",0,0,"","","","","","",orderByHashMap(newMap,true).toString,"","","",dateTime.value)
         case _ => usersNew(userName,"","",0,0,orderByHashMap(newMap,true).toString,"","","","","","","","","",dateTime.value)
       }
     })
   }
 
+  /**
+    * 用户关注学科 旧画像+ 根据日志生成的画像 = 最新用户画像 （最新）
+    * @param origin
+    * @param newSubjects
+    * @param Type
+    * @return
+    */
   def unionOriginAndNewUserConceredSubjectNew(origin:RDD[(String,UserConcernedSubjectTemp)],newSubjects:RDD[(String,UserConcernedSubjectTemp)],Type:String):RDD[usersNew]={
     origin.union(newSubjects).reduceByKey((r1,r2)=>{
       var userName = r1.UserName
@@ -1178,6 +1350,12 @@ object CommonFuction {
     })
   }
 
+  /**
+    * 用户画像的各标签按比重排序
+    * @param stringToWord
+    * @param descending
+    * @return
+    */
   def orderByHashMap(stringToWord:CustomizedHashMap[String,CustomizedKeyWord],descending:Boolean):CustomizedHashMap[String,CustomizedKeyWord]={
     var newStringToWord:CustomizedHashMap[String,CustomizedKeyWord] = new CustomizedHashMap[String,CustomizedKeyWord]
     if(stringToWord.size()>0){

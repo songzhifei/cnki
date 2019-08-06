@@ -9,6 +9,7 @@ import com.qianxinyao.analysis.jieba.keyword.TFIDFAnalyzer;
 import java.util.List;
 
 /**
+ * 分词算法
  * @author qianxinyao
  * @email tomqianmaple@gmail.com
  * @github https://github.com/bluemapleman

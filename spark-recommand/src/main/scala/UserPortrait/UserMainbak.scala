@@ -20,11 +20,10 @@ object UserMainbak {
     val logTime = spark.sparkContext.broadcast(getNowStr())
 
     println("-------------------当前处理的的用户画像地址："+args(0)+",日志地址："+args(1)+",生成用户画像存储位置："+args(2)+"--------------------")
-    //1.1. 获取用户画像数据（格式化用户兴趣标签数据）getYesterday() +
-    //var userList = spark.read.textFile(args(0)).rdd.map(line=>formatUsersNew(line,logTime)).filter(user=> !user.UserName.isEmpty)
+    //1.1. 获取用户画像数据（格式化用户兴趣标签数据）
     val userDataFrameOld = spark.read.parquet(args(0)).where("UserName != ''")
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(1)).rdd.map(formatUserLog).filter(filterLog).toDF().where("un is not null and un != '' and rcc !=''")
+    val newsLogDataFrame = spark.read.parquet(args(1)).where("un is not null and un != ''")
 
     newsLogDataFrame.cache()
 
@@ -60,8 +59,15 @@ object UserMainbak {
     var RecentRelatedList = userDataFrame.rdd.map(row=>{
       UserConcernedSubjectTemp(0,row.getAs[String]("UserName"),"",autoDecRefreshAuthorRecentInterests(jsonConcernedSubjectListToMap(row.getAs[String]("RecentRelatedAuthor"))),logTime.value)
     })
+    //搜索关键词累计标签
+    var SearchKeywordList = userDataFrame.rdd.map(row=>{
+      UserConcernedSubjectTemp(0,row.getAs[String]("UserName"),"",jsonConcernedSubjectListToMap(row.getAs[String]("SearchKeyword")),logTime.value)
+    })
     //获取浏览文章的日志信息
-    val articleLog = newsLogDataFrame.where("ro = 'article' and ac in ('browse','buy','read','collect','concern','comment')")
+    val articleLog = newsLogDataFrame.where("ro = 'article' and rcc !='' and ac in ('browse','buy','read','collect','concern','comment')")
+    //获取搜索相关日志
+    val searchLog = newsLogDataFrame.where("ac = 'search'")
+
     //日志缓存以方便被多次调用
     articleLog.cache()
     //根据日志生成最新的兴趣标签
@@ -72,6 +78,8 @@ object UserMainbak {
     val userSubConcernedSubjectFromLog = getUserConceredSubjects(articleLog,true)
     //根据日志生成最新的相关用户标签
     val userRelatedAuthorFromLog = getRelatedAuthorFromLog(articleLog)
+    //根据日志生成用户最新的搜索关键词标签
+    val userSearchKeyWordFromLog = getSearchKeyWordFromLog(searchLog)
 
     articleLogList.cache()
 
@@ -87,6 +95,8 @@ object UserMainbak {
 
     var userRecentRelatedAuthorFrame = unionOriginAndNewUserConceredSubject(RecentRelatedList,userRelatedAuthorFromLog,"RecentRelatedAuthor",logTime).toDF()
 
+    var userSearchKeyWordFrame = unionOriginAndNewUserConceredSubject(SearchKeywordList,userSearchKeyWordFromLog,"SearchKeyword",logTime).toDF()
+
     var resultDataFrame = userDataFrame
       .join(userConcernedSubjectFrame, Seq("UserName"))
       .join(userSubConcernedSubjectFrame, Seq("UserName"))
@@ -94,6 +104,7 @@ object UserMainbak {
       .join(SingleArticleRecentInterestFrame, Seq("UserName"))
       .join(userTotalRelatedAuthorFrame, Seq("UserName"))
       .join(userRecentRelatedAuthorFrame, Seq("UserName"))
+      .join(userSearchKeyWordFrame, Seq("UserName"))
       .select(
          userDataFrame("UserName")
         , userDataFrame("LawOfworkAndRest")
@@ -106,7 +117,7 @@ object UserMainbak {
         , SingleArticleRecentInterestFrame("SingleArticleRecentInterest")
         , userTotalRelatedAuthorFrame("TotalRelatedAuthor")
         , userRecentRelatedAuthorFrame("RecentRelatedAuthor")
-        , userDataFrame("BooksInterests")
+        , userSearchKeyWordFrame("SearchKeyword")
         , userDataFrame("JournalsInterests")
         , userDataFrame("ReferenceBookInterests")
         , userDataFrame("CustomerPurchasingPowerInterests")

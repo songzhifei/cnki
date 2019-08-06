@@ -4,6 +4,9 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.ml.linalg.{SparseVector => SV,DenseVector =>DV}
 
+/**
+  * 基于内容推荐的spark推荐app
+  */
 object spark_contentbaserecommand {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession

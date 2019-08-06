@@ -33,7 +33,8 @@ object UserPortraitToMysql {
       val SingleArticleRecentInterest = getNewArticleHashMap(jsonPrefListtoMapNew(row.getAs[String]("SingleArticleRecentInterest")),size)
       val TotalRelatedAuthor = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("TotalRelatedAuthor")),size)
       val RecentRelatedAuthor = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("RecentRelatedAuthor")),size)
-      if(ConcenedSubject.equals("{}") && SubConcenedSubject.equals("{}") && SingleArticleTotalInterest.equals("{}")  && SingleArticleRecentInterest.equals("{}") && TotalRelatedAuthor.equals("{}") && RecentRelatedAuthor.equals("{}")) hasPortrait = 0
+      val SearchKeyword = getNewSubjectHashMap(jsonConcernedSubjectListToMap(row.getAs[String]("SearchKeyword")),size)
+      if(ConcenedSubject.equals("{}") && SubConcenedSubject.equals("{}") && SingleArticleTotalInterest.equals("{}")  && SingleArticleRecentInterest.equals("{}") && TotalRelatedAuthor.equals("{}") && RecentRelatedAuthor.equals("{}") && SearchKeyword.equals("{}")) hasPortrait = 0
 
       usersToMysql(
         row.getAs("UserName")
@@ -47,7 +48,7 @@ object UserPortraitToMysql {
         ,SingleArticleRecentInterest
         ,TotalRelatedAuthor
         ,RecentRelatedAuthor
-        ,""
+        ,SearchKeyword
         ,""
         ,""
         ,""

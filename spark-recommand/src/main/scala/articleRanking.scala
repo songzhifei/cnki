@@ -5,6 +5,9 @@ import CommonFuction._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
 
+/**
+  * 文章排行榜生成程序
+  */
 object articleRanking {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
@@ -16,9 +19,10 @@ object articleRanking {
 
     var num = if(args.length >=3) args(2).toInt else 100
 
-    import spark.implicits._
+    //import spark.implicits._
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    //val newsLogDataFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    val newsLogDataFrame = spark.read.parquet(args(0))
 
     val articleLog = newsLogDataFrame.where("ro = 'article'")
 
@@ -40,12 +44,11 @@ object articleRanking {
     * */
 
 
-    dataFrame.repartition(1)
+    dataFrame
+      .coalesce(1)
       .write
       .format("csv")
-      //.option("escape","")
       .option("sep",",")
-      //.option("header",true)
       .mode(SaveMode.Overwrite)
       .save(args(1))
 

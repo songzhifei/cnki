@@ -60,5 +60,5 @@ Class-Path: commons-io-2.1.jar hadoop-hdfs-2.2.0.jar hadoop-yarn-commo
  -servlet-core-2.22.2.jar stream-2.7.0.jar unused-1.0.0.jar hadoop-map
  reduce-client-common-2.2.0.jar metrics-core-3.1.2.jar jersey-client-2
  .22.2.jar commons-lang3-3.5.jar hadoop-common-2.2.0.jar
-Main-Class: articleRanking
+Main-Class: FormatUserLog
 

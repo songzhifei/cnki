@@ -1,6 +1,9 @@
 import CommonFuction.{filterLog, formatUserLog, getYesterday}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 
+/**
+  * 图书排行榜生成app
+  */
 object tushuRanking {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
@@ -11,9 +14,10 @@ object tushuRanking {
 
     var num = if(args.length >=3) args(2).toInt else 100
 
-    import spark.implicits._
+    //import spark.implicits._
     //此处需要添加对一些基本的不符合条件的日志过滤掉
-    val newsLogDataFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    //val newsLogDataFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    val newsLogDataFrame = spark.read.parquet(args(0))
 
     val tushuLog = newsLogDataFrame.where("ro = 'tushu'")
 
@@ -35,12 +39,11 @@ object tushuRanking {
     * */
 
 
-    dataFrame.repartition(1)
+    dataFrame
+      .coalesce(1)
       .write
       .format("csv")
-      //.option("escape","")
       .option("sep",",")
-      //.option("header",true)
       .mode(SaveMode.Overwrite)
       .save(args(1))
 

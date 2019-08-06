@@ -95,103 +95,36 @@ object GuestMain {
         BookLogInfo(username,id, "", "")
       }).toDF()
 
-      //bookLogDataFrame
-      /***/
-      //1.2. 获取图书基本数据
-      val bookBaseInfoDataFrame = spark.read.textFile(args(2)).rdd.map(formateBookInfo).filter(!_.id.isEmpty).toDF()
-
-      val bookLogDataFrameTemp = bookLogDataFrame.join(bookBaseInfoDataFrame,Seq("id")).select(bookLogDataFrame("id"),bookLogDataFrame("username"),bookBaseInfoDataFrame("class_code"),bookBaseInfoDataFrame("keywords"))
-
-      bookLogDataFrameTemp.show()
-
-      var bookLogList = bookLogDataFrameTemp.rdd.map(row=>{
-        var id = row.getAs("id")
-        var username = row.getAs("username")
-        var module_id = row.getAs("class_code")
-        var preflist = jsonArticlePrefListtoMap(row.getAs("keywords"))
-        Log_Temp(username,"","","",module_id,"",preflist)
-      }).groupBy(_.username).map(row => {
-        val iterator = row._2.iterator
-        var arr = new ArrayBuffer[Log_Temp]()
-        while (iterator.hasNext) {
-          arr += iterator.next()
-        }
-        (row._1, arr.toArray)
-      })
-
-      val bookLogBroadCast = spark.sparkContext.broadcast(bookLogList.collectAsMap())
-
-      val BooksRDD = BooksInterestsList.map(user => getUserPortrait(user,bookLogBroadCast,logTime))
-
-      BooksInterestsFrame = BooksRDD.map(user=>{
-        users(user.UserID,user.UserName,"","",0,0,"",user.prefListExtend.toString,"","","","","",user.latest_log_time)
-      }).toDF()
 
       BooksInterestsFrame.show()
 
     }
 
-    var resultDataFrame:DataFrame = null
-
-    if(BooksInterestsFrame != null && BooksInterestsFrame.count()>0){
-      resultDataFrame = userDataFrame
-        .join(BooksInterestsFrame, Seq("UserID", "UserName"))
-        .join(SingleArticleInterestFrame, Seq("UserID", "UserName"))
-        .select(
-          userDataFrame("UserID")
-          , userDataFrame("UserName")
-          , userDataFrame("LawOfworkAndRest")
-          , userDataFrame("Area")
-          , userDataFrame("Age")
-          , userDataFrame("Gender")
-          , SingleArticleInterestFrame("SingleArticleInterest")
-          , BooksInterestsFrame("BooksInterests")
-          , userDataFrame("JournalsInterests")
-          , userDataFrame("ReferenceBookInterests")
-          , userDataFrame("CustomerPurchasingPowerInterests")
-          , userDataFrame("ProductviscosityInterests")
-          , userDataFrame("PurchaseIntentionInterests")
-          , userDataFrame("latest_log_time")
-        )
-    }else{
-      resultDataFrame = userDataFrame
-        //.join(JournalsInterestsFrame, Seq("UserID", "UserName"))
-        .join(SingleArticleInterestFrame, Seq("UserID", "UserName"))
-        .select(
-          userDataFrame("UserID")
-          , userDataFrame("UserName")
-          , userDataFrame("LawOfworkAndRest")
-          , userDataFrame("Area")
-          , userDataFrame("Age")
-          , userDataFrame("Gender")
-          , SingleArticleInterestFrame("SingleArticleInterest")
-          , userDataFrame("BooksInterests")
-          , userDataFrame("JournalsInterests")
-          , userDataFrame("ReferenceBookInterests")
-          , userDataFrame("CustomerPurchasingPowerInterests")
-          , userDataFrame("ProductviscosityInterests")
-          , userDataFrame("PurchaseIntentionInterests")
-          , userDataFrame("latest_log_time")
-        )
-        .where("SingleArticleInterest !='{}'")
-
-    }
+    var resultDataFrame = userDataFrame
+      //.join(JournalsInterestsFrame, Seq("UserID", "UserName"))
+      .join(SingleArticleInterestFrame, Seq("UserID", "UserName"))
+      .select(
+        userDataFrame("UserID")
+        , userDataFrame("UserName")
+        , userDataFrame("LawOfworkAndRest")
+        , userDataFrame("Area")
+        , userDataFrame("Age")
+        , userDataFrame("Gender")
+        , SingleArticleInterestFrame("SingleArticleInterest")
+        , userDataFrame("BooksInterests")
+        , userDataFrame("JournalsInterests")
+        , userDataFrame("ReferenceBookInterests")
+        , userDataFrame("CustomerPurchasingPowerInterests")
+        , userDataFrame("ProductviscosityInterests")
+        , userDataFrame("PurchaseIntentionInterests")
+        , userDataFrame("latest_log_time")
+      )
+      .where("SingleArticleInterest !='{}'")
 
     resultDataFrame.show()
     //更新用户画像
 
     println("----------------------用户画像正在保存......--------------------------")
-    /*
-    userDataFrame.write
-      .format("jdbc")
-      .option("url", "jdbc:mysql://master02:3306")
-      .option("dbtable", "centerDB.users_temp")
-      .option("user", "root")
-      .option("password", "root")
-      .mode(SaveMode.Overwrite)
-      .save()
-    * */
-
 
     resultDataFrame.repartition(1)
       .write

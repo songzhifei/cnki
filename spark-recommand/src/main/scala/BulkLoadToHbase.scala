@@ -10,6 +10,9 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.sql.SparkSession
 
+/**
+  * 用户日志保存到hbase app
+  */
 object BulkLoadToHbase {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
@@ -22,11 +25,13 @@ object BulkLoadToHbase {
 
 
     import spark.implicits._
-    val newsLogFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    //val newsLogFrame = spark.read.textFile(args(0)).rdd.map(formatUserLog).filter(filterLog).toDF()
+    val newsLogFrame = spark.read.parquet(args(0)).filter("un != ''")
 
     val conf = HBaseConfiguration.create()
     conf.set("hbase.zookeeper.property.clientPort", "2181")
     conf.set("hbase.zookeeper.quorum", "master02")
+    //必须提前sorted排序，由于hbase存储数据是有序的，而读取hfile的时候如果不提前排序会报错
     var arrName = Array("ac","ci","dt","gki","rcc","rkd","ri","sw","ua","un","vt").sorted
     val pathString = "/tmp/user_log"
     var path = new Path(pathString)
@@ -36,58 +41,33 @@ object BulkLoadToHbase {
       //为防止误删，禁止递归删除
       hdfs.delete(path,true)
     }
+    println("-------------------导入日志位置为："+args(0)+"Hfile临时目录存储位置为："+pathString)
+    val HFile = newsLogFrame.rdd.map(row => {
+      val visitTime = row.getAs[String]("vt")
 
-    val HFile = newsLogFrame.rdd.flatMap(row => {
-      val rowKey = UUID.randomUUID().toString
+      val actionType = row.getAs[String]("ac")
+
+      val clientIP = row.getAs[String]("ci")
+
+      //val rowKey = visitTime.toLong.hashCode() % 10 + visitTime
+      val rowKey = UUID.randomUUID()+ "-" + visitTime
+
       val family = "cf1"
-      //(new ImmutableBytesWritable(Bytes.toBytes(rowKey),))
-      //(new ImmutableBytesWritable(Bytes.toBytes(rowKey)), new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ac"), Bytes.toBytes(log.ac)))
+      (rowKey,row)
 
-      for(i <- 0 to arrName.length - 1) yield {
-        ((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes(arrName(i)), Bytes.toBytes(row.getAs[String](arrName(i))))
-        ))
-      }
     })
-    /*
+      .sortByKey()
+        .flatMap{
+          case (rowKey,row)=>{
+            for(i <- 0 to arrName.length - 1) yield {
+              //(new ImmutableBytesWritable(Bytes.toBytes(rowKey))
+              var kv =new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes("cf1"), Bytes.toBytes(arrName(i)), Bytes.toBytes(row.getAs[String](arrName(i))))
+              (new ImmutableBytesWritable(Bytes.toBytes(rowKey)),kv)
+            }
+          }
+        }
 
-      var arr = Array(((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-        , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ac"), Bytes.toBytes(log.ac))
-      ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ci"), Bytes.toBytes(log.ci))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("dt"), Bytes.toBytes(log.dt))
-        ))
-        , ((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("gki"), Bytes.toBytes(log.gki))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("rcc"), Bytes.toBytes(log.rcc))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("rkd"), Bytes.toBytes(log.rkd))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ri"), Bytes.toBytes(log.ri))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("sw"), Bytes.toBytes(log.sw))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ua"), Bytes.toBytes(log.ua))
-        ))
-        , ((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("un"), Bytes.toBytes(log.un))
-        ))
-        ,((new ImmutableBytesWritable(Bytes.toBytes(rowKey))
-          , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("vt"), Bytes.toBytes(log.vt))
-        ))
-      )
-      arr.sortBy(_._1)
-    * */
-    HFile.sortByKey().saveAsNewAPIHadoopFile(pathString, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat2], conf)
+    HFile.saveAsNewAPIHadoopFile(pathString, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat2], conf)
 
     //开始即那个HFile导入到Hbase,此处都是hbase的api操作
     val load = new LoadIncrementalHFiles(conf)
@@ -114,23 +94,9 @@ object BulkLoadToHbase {
       val end=System.currentTimeMillis()
       println("用时："+(end-start)+"毫秒！")
     } finally {
-
       table.close()
       conn.close()
     }
-
-    /*
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ci"), Bytes.toBytes(log.ci))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("dt"), Bytes.toBytes(log.dt))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("gki"), Bytes.toBytes(log.gki))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("rcc"), Bytes.toBytes(log.rcc))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("rkd"), Bytes.toBytes(log.rkd))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ri"), Bytes.toBytes(log.ri))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("sw"), Bytes.toBytes(log.sw))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("ua"), Bytes.toBytes(log.ua))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("un"), Bytes.toBytes(log.un))
-    , new KeyValue(Bytes.toBytes(rowKey), Bytes.toBytes(family), Bytes.toBytes("vt"), Bytes.toBytes(log.vt))*/
-
     spark.stop()
   }
 }
