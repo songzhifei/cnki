@@ -11,7 +11,7 @@
 
     <artifactId>spark-recommand</artifactId>
     <properties>
-        <mysql-connector>5.1.39</mysql-connector>
+        <mysql-connector>8.0.16</mysql-connector>
         <spark-version>2.1.0</spark-version>
         <hbase-version>1.2.0</hbase-version>
     </properties>
@@ -95,7 +95,7 @@
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
-            <version>5.1.40</version>
+            <version>8.0.16</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
         <dependency>
